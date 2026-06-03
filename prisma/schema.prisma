@@ -1,0 +1,85 @@
+// DistressHub — Prisma schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Property {
+  id          String  @id @default(cuid())
+  externalId  String  @unique
+  source      String  @default("BAANKNET")
+
+  title       String
+  description String?
+  propertyType String
+  bank        String
+
+  address  String
+  city     String
+  state    String
+  pincode  String?
+  latitude  Float?
+  longitude Float?
+
+  reservePrice Float
+  emdAmount    Float?
+  estimatedFmv Float?
+  discountPct  Float?
+
+  builtUpArea Float?
+  carpetArea  Float?
+  bedrooms    Int?
+
+  auctionDate    DateTime?
+  possessionType String?
+  auctionStatus  String   @default("UPCOMING")
+
+  dhScore      Int?
+  scoreSignals String?
+
+  pipelineStage String  @default("INGESTED")
+  notes         String?
+
+  imageUrls String  @default("[]")
+  sourceUrl String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interests InvestorInterest[]
+
+  @@index([city, propertyType])
+  @@index([dhScore])
+  @@index([auctionDate])
+  @@index([pipelineStage])
+}
+
+model Investor {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  phone      String?
+  type       String
+  ticketSize Float?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  interests InvestorInterest[]
+}
+
+model InvestorInterest {
+  id         String   @id @default(cuid())
+  propertyId String
+  investorId String
+  message    String?
+  createdAt  DateTime @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  investor Investor @relation(fields: [investorId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([investorId])
+}

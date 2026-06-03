@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Distress Hub
 
-## Getting Started
+India's real-time distressed real estate intelligence platform. Demo build per Tech Brief.
 
-First, run the development server:
+## Quick start (local)
 
 ```bash
+# 1. Install deps
+npm install
+
+# 2. Run migrations + seed 50 NCR listings
+npx prisma migrate dev --name init
+npx tsx prisma/seed.ts
+
+# 3. Boot dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# → http://localhost:3000
+
+# OR boot via Vercel CLI (same machine, no deploy)
+npx vercel dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Demo credentials
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Login URL**: http://localhost:3000/login
+- **Password**: `distress2026` (from `DEMO_PASSWORD` in `.env.local`)
+- **Protected routes**: `/dashboard`, `/pipeline`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Stack
 
-## Learn More
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 App Router (Turbopack) |
+| Language | TypeScript (strict) |
+| Styling | Tailwind v4 + custom shadcn-style primitives |
+| Database | SQLite via Prisma 7 + `@prisma/adapter-better-sqlite3` (swap to Supabase Postgres by changing `provider` + `DATABASE_URL`) |
+| Maps | react-leaflet + OpenStreetMap (no token needed) |
+| Charts | Recharts |
+| Validation | zod |
 
-To learn more about Next.js, take a look at the following resources:
+## Routes
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Public
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `/` — Landing (hero, problem, three-pillar stack, source coverage, CTA)
+- `/about` — Company brief
+- `/deals` — Filterable listing of all scored deals
+- `/deals/[id]` — Single deal: DH Score breakdown, editable financial model, map, express-interest
 
-## Deploy on Vercel
+### Investor portal (env-gated)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `/dashboard` — Stat cards, dark-themed map, pipeline funnel, top-scored deals
+- `/pipeline` — Drag-and-drop Kanban across 10 stages, inline notes
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Auth
+
+- `/login` — Demo password gate
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/properties` | Filtered list (city, type, bank, minScore, maxPrice, possessionType, sort) |
+| GET | `/api/properties/[id]` | Full property + signal explanations |
+| POST | `/api/properties/[id]/stage` | Update pipeline stage and/or notes |
+| GET | `/api/properties/[id]/financial-model` | Compute model with optional override query params |
+| GET | `/api/stats/overview` | Dashboard summary KPIs |
+| GET | `/api/stats/pipeline` | Funnel counts by stage |
+| POST | `/api/investors/express-interest` | Investor lead capture (upserts Investor + creates InvestorInterest) |
+| POST | `/api/scraper/trigger` | Mock BAANKNET ingest — re-runs scoring against existing DB |
+| POST | `/api/auth/login` | Sets `dh-auth` cookie |
+| GET | `/api/auth/logout` | Clears cookie, redirects |
+
+All write endpoints validate with zod.
+
+## DH Score (lib/scoring.ts)
+
+Deterministic heuristic. Five weighted signals:
+
+- Discount to FMV (35%)
+- Title health proxy via bank tier (20%)
+- Possession state (15%)
+- Liquidity proxy via city tier (20%)
+- Renovation lift by property type (10%)
+
+ML model with comp-regression + EC parsing ships Q1 FY27.
+
+## Financial model (lib/financial-model.ts)
+
+Editable assumptions: renovation cost, hold months, appreciation %, rental yield %, stamp duty %, brokerage %, legal DD. Recomputes MOIC, annualised ROI, IRR live. CSV export from the detail page.
+
+## Notes vs original brief
+
+The brief targets Next.js 14 + Supabase Postgres + Mapbox. This build is identical in shape but:
+
+- **Next.js 16** (default from `create-next-app@latest`) — `middleware.ts` is now `proxy.ts`, `params`/`searchParams` are `Promise<>`.
+- **SQLite via Prisma 7** for zero-setup local dev. Swap `provider = "sqlite"` to `"postgresql"` and point `DATABASE_URL` at Supabase to go to prod.
+- **react-leaflet** instead of Mapbox — no token required, identical dark-theme aesthetic via CSS filters on the tile layer.
+- Python BAANKNET scraper is documented in the brief but stubbed as `/api/scraper/trigger` (re-scores existing DB). Implement the headless Playwright scraper in `scraper/baanknet.py` for v1.
