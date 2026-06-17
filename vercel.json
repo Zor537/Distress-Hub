@@ -1,10 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npx prisma generate && next build",
   "framework": "nextjs",
-  "regions": ["bom1"],
-  "env": {
-    "DATABASE_URL": "@distresshub_database_url",
-    "DEMO_PASSWORD": "@distresshub_demo_password"
-  }
+  "buildCommand": "next build",
+  "regions": ["bom1"]
 }

@@ -9,7 +9,7 @@ export async function GET() {
   });
   const counts: Record<string, number> = {};
   for (const s of PIPELINE_STAGES) counts[s] = 0;
-  for (const r of rows) counts[r.pipelineStage] = r._count;
+  for (const r of rows) counts[String(r.pipelineStage)] = r._count;
 
   return NextResponse.json({ counts });
 }

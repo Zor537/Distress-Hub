@@ -4,7 +4,6 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "images.unsplash.com" }],
   },
-  serverExternalPackages: ["@prisma/client", "better-sqlite3"],
 };
 
 export default nextConfig;
