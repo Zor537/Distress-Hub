@@ -1,142 +1,204 @@
 """
-BAANKNET scraper — scaffolded per Tech Brief §4.
+BAANKNET scraper — production version.
 
-Source: https://baanknet.com/auctions
+Discovered API (no Playwright needed at runtime):
 
-BAANKNET is a React SPA backed by a search API. Strategy:
-  1. Load the page in Playwright (headless Chromium).
-  2. Listen for XHR responses to /api/search* — capture the URL + payload shape.
-  3. Once the endpoint is captured, call it directly via httpx for faster
-     subsequent pages.
+  POST /eauction-psb/api/get-upcoming-auctions
+       body: {"pageSize":20,"page":0,"propertyTypeId":1}
+       returns: list of {propertyId, auctionId, bank, location,
+                          auctionStartDate, auctionEndDate, totalCount, id}
 
-This file ships as a scaffold — the exact XHR endpoint and JSON shape must be
-captured on a real run (DOM/network shape will drift). The pattern is correct
-and `_normalise` shows the expected output schema for /api/ingest.
+  GET  /eauction-psb/api/get-auction-details/{id}
+       returns: {ReservePrice, EMD, Auctionstartdate, AuctionEndDate, AuctionId, ...}
 
-Run: python scraper/baanknet.py
-Prereqs: playwright install chromium
+PropertyTypeIds: 1=Residential, 2=Commercial, 3=Agricultural, 4=Industrial, 5=Other
+
+The detail-richer fields (title, address, area, images) require an authenticated
+session and aren't accessible to anonymous scrapers. We synthesize a title from
+bank + location + propertyId, parse city/state from the comma-separated location
+string, and leave optional fields null. The DH Score engine handles missing area
+gracefully (falls back to 1000 sqft assumption).
+
+Run: python baanknet.py
 """
 from __future__ import annotations
 
-import asyncio
+import os
 import re
+import time
+from datetime import datetime
 from typing import Any
 
+import httpx
 from dotenv import load_dotenv
-from playwright.async_api import async_playwright
 
 from push import push
 
 load_dotenv()
 
-START_URL = "https://baanknet.com/auctions"
+BASE = "https://baanknet.com/eauction-psb/api"
+
+PROPERTY_TYPES = {
+    1: "RESIDENTIAL",
+    2: "COMMERCIAL",
+    3: "AGRICULTURAL",
+    4: "INDUSTRIAL",
+    5: "OTHER",
+}
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 DistressHubBot/1.0",
+    "Accept": "application/json, text/plain, */*",
+    "Content-Type": "application/json",
+    "Origin": "https://baanknet.com",
+    "Referer": "https://baanknet.com/",
+}
+
+# Polite scraping — small delay between requests
+RATE_LIMIT_DELAY = 0.15  # seconds
 
 
-def _normalise(raw: dict[str, Any]) -> dict[str, Any] | None:
-    """Map raw BAANKNET API response → our normalised Property shape.
-
-    Fill in the exact field names after capturing the live XHR. The keys below
-    are the ones we expect once captured — adjust to match.
-    """
-    listing_id = raw.get("listingId") or raw.get("auctionId") or raw.get("id")
-    if not listing_id:
+def _parse_auction_dt(s: str | None) -> str | None:
+    """BAANKNET format: '23-06-2026 10:00' → ISO 8601."""
+    if not s:
+        return None
+    try:
+        dt = datetime.strptime(s, "%d-%m-%Y %H:%M")
+        return dt.isoformat() + ".000Z"
+    except ValueError:
         return None
 
-    reserve = raw.get("reservePrice") or raw.get("reserveBidAmount")
-    if not reserve:
-        return None
 
-    title = raw.get("title") or raw.get("propertyTitle") or "Untitled BAANKNET listing"
-    address = raw.get("address") or raw.get("propertyAddress") or ""
-    city = raw.get("city") or "Unknown"
-    state = raw.get("state") or "Unknown"
-    bank = raw.get("bank") or raw.get("sellerBank") or "Unknown"
-    prop_type = (raw.get("propertyType") or "OTHER").upper()
-    if prop_type not in {"RESIDENTIAL", "COMMERCIAL", "INDUSTRIAL", "AGRICULTURAL", "PLOT", "OTHER"}:
-        prop_type = "OTHER"
-
-    return {
-        "externalId": f"BKNT-{listing_id}",
-        "title": title[:300],
-        "description": raw.get("description"),
-        "propertyType": prop_type,
-        "bank": bank,
-        "address": address[:400],
-        "city": city,
-        "state": state,
-        "pincode": raw.get("pincode"),
-        "latitude": raw.get("latitude"),
-        "longitude": raw.get("longitude"),
-        "reservePrice": float(reserve),
-        "emdAmount": float(raw["emdAmount"]) if raw.get("emdAmount") else None,
-        "builtUpArea": float(raw["builtUpArea"]) if raw.get("builtUpArea") else None,
-        "auctionDate": raw.get("auctionDate"),
-        "possessionType": (raw.get("possessionType") or "UNKNOWN").upper(),
-        "imageUrls": raw.get("imageUrls") or [],
-        "sourceUrl": f"https://baanknet.com/auctions/listing/{listing_id}",
-    }
+def _parse_location(loc: str) -> tuple[str, str]:
+    """Parse 'Bengaluru, Karnataka' → ('Bengaluru', 'Karnataka')."""
+    if not loc:
+        return ("Unknown", "Unknown")
+    parts = [p.strip() for p in loc.split(",")]
+    if len(parts) >= 2:
+        return (parts[0], parts[-1])
+    return (parts[0], "Unknown")
 
 
-async def capture_xhr_then_paginate(target_count: int = 500) -> list[dict[str, Any]]:
-    """Open BAANKNET in Playwright, capture the search XHR endpoint + payload,
-    then hit it directly for subsequent pages."""
-    captured: list[dict[str, Any]] = []
-    api_endpoint: str | None = None
-    api_payload: dict[str, Any] | None = None
+def _list_page(client: httpx.Client, property_type_id: int, page: int, page_size: int = 50) -> dict:
+    """Call get-upcoming-auctions, return raw response."""
+    r = client.post(
+        f"{BASE}/get-upcoming-auctions",
+        json={"pageSize": page_size, "page": page, "propertyTypeId": property_type_id},
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(user_agent="DistressHubBot/1.0")
-        page = await context.new_page()
 
-        async def on_response(response):
-            nonlocal api_endpoint, api_payload
-            url = response.url
-            if api_endpoint is None and re.search(r"/api/(search|properties|auctions)", url):
-                try:
-                    api_endpoint = url
-                    api_payload = await response.json()
-                    print(f"[baanknet] captured XHR: {url}")
-                except Exception as e:
-                    print(f"[baanknet] capture failed: {e}")
+def _detail(client: httpx.Client, numeric_id: str | int) -> dict:
+    """Call get-auction-details/{id}, return inner respData dict."""
+    r = client.get(f"{BASE}/get-auction-details/{numeric_id}", timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    if data.get("status") == 1 and data.get("respData"):
+        return data["respData"]
+    return {}
 
-        page.on("response", on_response)
-        await page.goto(START_URL, wait_until="networkidle", timeout=60_000)
 
-        # Wait briefly for the search XHR to fire
-        for _ in range(20):
-            if api_endpoint:
-                break
-            await asyncio.sleep(0.5)
+def scrape_type(client: httpx.Client, property_type_id: int, max_listings: int) -> list[dict[str, Any]]:
+    """Scrape one property type up to max_listings, enriching each with detail data."""
+    out: list[dict[str, Any]] = []
+    page = 0
+    page_size = 50
+    type_name = PROPERTY_TYPES[property_type_id]
 
-        await browser.close()
-
-    if not api_endpoint or not api_payload:
-        print("[baanknet] no XHR captured — DOM may have changed")
-        return []
-
-    # If the captured payload is already a list of listings, use it directly.
-    items = api_payload.get("results") or api_payload.get("data") or api_payload.get("listings") or []
-    for raw in items:
-        norm = _normalise(raw)
-        if norm:
-            captured.append(norm)
-        if len(captured) >= target_count:
+    while len(out) < max_listings:
+        try:
+            data = _list_page(client, property_type_id, page, page_size)
+        except httpx.HTTPError as e:
+            print(f"[baanknet] {type_name} page {page} list failed: {e}")
             break
 
-    return captured
+        rows = data.get("respData") or []
+        if not rows:
+            break
+
+        for row in rows:
+            if len(out) >= max_listings:
+                break
+
+            numeric_id = row.get("id")
+            property_id = row.get("propertyId")
+            auction_id = row.get("auctionId")
+            bank = row.get("bank") or "Unknown"
+            location = row.get("location") or ""
+
+            if not numeric_id or not property_id:
+                continue
+
+            # Enrich with detail
+            try:
+                d = _detail(client, numeric_id)
+            except httpx.HTTPError as e:
+                print(f"[baanknet] detail {numeric_id} failed: {e}")
+                d = {}
+            time.sleep(RATE_LIMIT_DELAY)
+
+            reserve = d.get("ReservePrice")
+            if not reserve or float(reserve) <= 0:
+                # Can't ingest without a reserve price — the scoring engine needs it
+                continue
+
+            emd = d.get("EMD")
+            auction_start = d.get("Auctionstartdate") or row.get("auctionStartDate")
+
+            city, state = _parse_location(location)
+            title = f"{type_name.title()} property — {city}, {state}"
+
+            out.append({
+                "externalId": f"BKNT-{property_id}",
+                "title": title[:300],
+                "description": f"BAANKNET auction by {bank}. Location: {location}. Auction ID {auction_id}.",
+                "propertyType": type_name,
+                "bank": bank,
+                "address": location[:400] or "Unknown",
+                "city": city,
+                "state": state,
+                "reservePrice": float(reserve),
+                "emdAmount": float(emd) if emd else None,
+                "auctionDate": _parse_auction_dt(auction_start),
+                "possessionType": "UNKNOWN",
+                "sourceUrl": f"https://baanknet.com/property-details/{numeric_id}",
+            })
+
+        # Stop if this page returned fewer than page_size (last page)
+        if len(rows) < page_size:
+            break
+
+        page += 1
+        time.sleep(RATE_LIMIT_DELAY)
+
+    return out
 
 
-def main() -> None:
-    items = asyncio.run(capture_xhr_then_paginate(target_count=500))
-    print(f"[baanknet] captured {len(items)} listings")
+def scrape(per_type: int = 60) -> list[dict[str, Any]]:
+    """Scrape all 5 property types, returning up to per_type listings each."""
+    all_listings: list[dict[str, Any]] = []
+    with httpx.Client(headers=HEADERS, timeout=30) as client:
+        for ptype_id, ptype_name in PROPERTY_TYPES.items():
+            print(f"[baanknet] Scraping {ptype_name} (id={ptype_id}, target={per_type})…")
+            batch = scrape_type(client, ptype_id, per_type)
+            print(f"[baanknet]   → {len(batch)} listings collected")
+            all_listings.extend(batch)
+    return all_listings
+
+
+def main():
+    items = scrape(per_type=60)
+    print(f"\n[baanknet] Total scraped: {len(items)} listings")
     if not items:
-        print("[baanknet] nothing captured — re-inspect XHR shape in Playwright trace")
+        print("[baanknet] Nothing to push.")
         return
+    # Push in chunks of 100 to stay under endpoint limit
     for i in range(0, len(items), 100):
         batch = items[i : i + 100]
         result = push("BAANKNET", batch)
-        print(f"[baanknet] batch {i // 100 + 1}: {result}")
+        print(f"[baanknet] Pushed batch {i // 100 + 1}: {result}")
 
 
 if __name__ == "__main__":

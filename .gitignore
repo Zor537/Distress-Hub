@@ -46,3 +46,8 @@ dev.db
 dev.db-journal
 prisma/dev.db
 prisma/dev.db-journal
+
+# Python scraper venv
+scraper/.venv/
+scraper/__pycache__/
+scraper/*.pyc
