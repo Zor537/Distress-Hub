@@ -94,7 +94,10 @@ async function fetchListPage(typeId: number, page: number, pageSize = 50): Promi
     headers: HEADERS,
     body: JSON.stringify({ pageSize, page, propertyTypeId: typeId }),
   });
-  if (!res.ok) throw new Error(`list ${typeId}:${page} → ${res.status}`);
+  if (!res.ok) {
+    const bodyPreview = (await res.text()).slice(0, 300);
+    throw new Error(`list ${typeId}:${page} → status=${res.status} body=${bodyPreview}`);
+  }
   const data = (await res.json()) as { status?: number; respData?: ListItem[] };
   return data?.respData ?? [];
 }
