@@ -14,41 +14,65 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   }
 
-  const url = "https://baanknet.com/eauction-psb/api/get-upcoming-auctions";
-  const body = JSON.stringify({ pageSize: 5, page: 0, propertyTypeId: 1 });
-  const started = Date.now();
-
-  try {
-    const res = await fetch(url, {
+  const targets = [
+    {
+      label: "baanknet root GET",
+      url: "https://baanknet.com/",
+      method: "GET",
+      body: undefined as string | undefined,
+    },
+    {
+      label: "baanknet API POST",
+      url: "https://baanknet.com/eauction-psb/api/get-upcoming-auctions",
       method: "POST",
-      headers: {
-        "User-Agent": "Mozilla/5.0 DistressHubBot/1.0",
-        Accept: "application/json, text/plain, */*",
-        "Content-Type": "application/json",
-        Origin: "https://baanknet.com",
-        Referer: "https://baanknet.com/",
-      },
-      body,
-    });
+      body: JSON.stringify({ pageSize: 5, page: 0, propertyTypeId: 1 }),
+    },
+    {
+      label: "httpbin control",
+      url: "https://httpbin.org/ip",
+      method: "GET",
+      body: undefined as string | undefined,
+    },
+    {
+      label: "ipify control",
+      url: "https://api.ipify.org?format=json",
+      method: "GET",
+      body: undefined as string | undefined,
+    },
+  ];
 
-    const headers: Record<string, string> = {};
-    res.headers.forEach((v, k) => {
-      headers[k] = v;
-    });
+  const results: Record<string, unknown>[] = [];
 
-    const text = await res.text();
-
-    return NextResponse.json({
-      status: res.status,
-      elapsedMs: Date.now() - started,
-      headers,
-      bodyLength: text.length,
-      bodyPreview: text.slice(0, 800),
-    });
-  } catch (e) {
-    return NextResponse.json({
-      error: String(e),
-      elapsedMs: Date.now() - started,
-    });
+  for (const t of targets) {
+    const started = Date.now();
+    try {
+      const res = await fetch(t.url, {
+        method: t.method,
+        headers: {
+          "User-Agent": "Mozilla/5.0 DistressHubBot/1.0",
+          Accept: "application/json, text/plain, */*",
+          "Content-Type": "application/json",
+          Origin: "https://baanknet.com",
+          Referer: "https://baanknet.com/",
+        },
+        body: t.body,
+      });
+      const text = await res.text();
+      results.push({
+        label: t.label,
+        status: res.status,
+        elapsedMs: Date.now() - started,
+        bodyLength: text.length,
+        bodyPreview: text.slice(0, 200),
+      });
+    } catch (e) {
+      results.push({
+        label: t.label,
+        error: String(e),
+        elapsedMs: Date.now() - started,
+      });
+    }
   }
+
+  return NextResponse.json({ results });
 }
