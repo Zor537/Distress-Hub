@@ -89,12 +89,35 @@ export type InvestorInterest = {
   createdAt: Date;
 };
 
+export type IngestRun = {
+  id: string;
+  source: string;
+  startedAt: Date;
+  finishedAt: Date | null;
+  status: "RUNNING" | "SUCCESS" | "PARTIAL" | "FAILED";
+  listingsTotal: number;
+  listingsAdded: number;
+  listingsUpdated: number;
+  errorMessage: string | null;
+};
+
 const STAGES = ["INGESTED", "SCORED", "SHORTLISTED", "DILIGENCE", "BID_PLACED", "PASSED"];
 
 let _properties: Property[] = [];
 let _investors: Investor[] = [];
 let _interests: InvestorInterest[] = [];
+let _ingestRuns: IngestRun[] = [];
 let _seeded = false;
+
+function detectSource(externalId: string): string {
+  if (externalId.startsWith("BKNT-")) return "BAANKNET";
+  if (externalId.startsWith("IIG-")) return "IIG";
+  if (externalId.startsWith("IBAPI-")) return "IBAPI";
+  if (externalId.startsWith("NARCL-")) return "NARCL";
+  if (externalId.startsWith("NCLT-")) return "NCLT";
+  if (externalId.startsWith("PSB-")) return "PSB";
+  return "MANUAL";
+}
 
 function loadSeedFromJson(): Property[] {
   const seed = seedListings as SeedListing[];
@@ -112,7 +135,7 @@ function loadSeedFromJson(): Property[] {
     return {
       id: cuidLike(l.externalId),
       externalId: l.externalId,
-      source: "BAANKNET",
+      source: detectSource(l.externalId),
       title: l.title,
       description: l.description ?? null,
       propertyType: l.propertyType,
@@ -307,6 +330,28 @@ const property = {
     return row;
   },
 
+  async upsert(args: {
+    where: { externalId: string };
+    update: Partial<Property>;
+    create: Omit<Property, "id" | "createdAt" | "updatedAt"> & { id?: string };
+  }): Promise<{ row: Property; created: boolean }> {
+    ensureSeeded();
+    const idx = _properties.findIndex((p) => p.externalId === args.where.externalId);
+    const now = new Date();
+    if (idx >= 0) {
+      _properties[idx] = { ..._properties[idx], ...args.update, updatedAt: now } as Property;
+      return { row: _properties[idx], created: false };
+    }
+    const row: Property = {
+      ...(args.create as Property),
+      id: args.create.id ?? "c" + randomUUID().replace(/-/g, "").slice(0, 24),
+      createdAt: now,
+      updatedAt: now,
+    };
+    _properties.push(row);
+    return { row, created: true };
+  },
+
   async deleteMany(): Promise<{ count: number }> {
     const count = _properties.length;
     _properties = [];
@@ -376,9 +421,74 @@ const investorInterest = {
   },
 };
 
+// ---- IngestRun model ------------------------------------------------------
+
+const ingestRun = {
+  async create(args: {
+    data: Omit<IngestRun, "id" | "startedAt"> & { id?: string; startedAt?: Date };
+  }): Promise<IngestRun> {
+    const row: IngestRun = {
+      ...(args.data as IngestRun),
+      id: args.data.id ?? "c" + randomUUID().replace(/-/g, "").slice(0, 24),
+      startedAt: args.data.startedAt ?? new Date(),
+    };
+    _ingestRuns.push(row);
+    return row;
+  },
+
+  async update(args: { where: { id: string }; data: Partial<IngestRun> }): Promise<IngestRun> {
+    const idx = _ingestRuns.findIndex((r) => r.id === args.where.id);
+    if (idx === -1) throw new Error(`IngestRun ${args.where.id} not found`);
+    _ingestRuns[idx] = { ..._ingestRuns[idx], ...args.data };
+    return _ingestRuns[idx];
+  },
+
+  async findMany(args?: {
+    where?: WhereClause;
+    orderBy?: Record<string, "asc" | "desc">;
+    take?: number;
+  }): Promise<IngestRun[]> {
+    let rows = _ingestRuns.filter((r) => matches(r as unknown as Record<string, unknown>, args?.where));
+    rows = sortRows(rows as unknown as Record<string, unknown>[], args?.orderBy) as unknown as IngestRun[];
+    if (args?.take) rows = rows.slice(0, args.take);
+    return rows.map((r) => ({ ...r }));
+  },
+
+  async groupBy(args: {
+    by: string[];
+    _count?: true | Record<string, true>;
+    _sum?: Record<string, true>;
+    where?: WhereClause;
+  }): Promise<Array<Record<string, unknown> & { _count: number; _sum?: Record<string, number> }>> {
+    const rows = _ingestRuns.filter((r) => matches(r as unknown as Record<string, unknown>, args.where));
+    const groups: Record<string, Record<string, unknown> & { _count: number; _sum?: Record<string, number> }> = {};
+    for (const r of rows) {
+      const key = args.by.map((k) => String((r as unknown as Record<string, unknown>)[k])).join("|");
+      if (!groups[key]) {
+        const g: Record<string, unknown> & { _count: number; _sum?: Record<string, number> } = { _count: 0 };
+        for (const k of args.by) g[k] = (r as unknown as Record<string, unknown>)[k];
+        if (args._sum) g._sum = {};
+        groups[key] = g;
+      }
+      groups[key]._count++;
+      if (args._sum) {
+        for (const k of Object.keys(args._sum)) {
+          groups[key]._sum![k] = (groups[key]._sum![k] ?? 0) + ((r as unknown as Record<string, number>)[k] ?? 0);
+        }
+      }
+    }
+    return Object.values(groups);
+  },
+
+  async count(args?: { where?: WhereClause }): Promise<number> {
+    return _ingestRuns.filter((r) => matches(r as unknown as Record<string, unknown>, args?.where)).length;
+  },
+};
+
 export const store = {
   property,
   investor,
   investorInterest,
+  ingestRun,
   $disconnect: async () => {},
 };

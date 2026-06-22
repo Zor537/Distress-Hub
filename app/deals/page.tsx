@@ -19,6 +19,7 @@ export default async function DealsPage({ searchParams }: { searchParams: SP }) 
     bank: typeof sp.bank === "string" ? sp.bank : undefined,
     minScore: typeof sp.minScore === "string" ? sp.minScore : undefined,
     possessionType: typeof sp.possessionType === "string" ? sp.possessionType : undefined,
+    source: typeof sp.source === "string" ? sp.source : undefined,
     sort: typeof sp.sort === "string" ? sp.sort : "score",
   };
 
@@ -27,6 +28,7 @@ export default async function DealsPage({ searchParams }: { searchParams: SP }) 
   if (filters.type) where.propertyType = filters.type;
   if (filters.bank) where.bank = filters.bank;
   if (filters.possessionType) where.possessionType = filters.possessionType;
+  if (filters.source) where.source = filters.source;
   if (filters.minScore) where.dhScore = { gte: Number(filters.minScore) };
 
   const orderBy: Record<string, "asc" | "desc"> =

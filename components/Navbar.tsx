@@ -18,6 +18,9 @@ export function Navbar({ variant = "public" }: { variant?: "public" | "protected
           <Link href="/deals" className="hover:text-text transition-colors">Deals</Link>
           <Link href="/dashboard" className="hover:text-text transition-colors">Dashboard</Link>
           <Link href="/pipeline" className="hover:text-text transition-colors">Pipeline</Link>
+          {variant === "protected" && (
+            <Link href="/admin/ingest" className="hover:text-text transition-colors">Admin</Link>
+          )}
           <Link href="/about" className="hover:text-text transition-colors">About</Link>
         </nav>
 

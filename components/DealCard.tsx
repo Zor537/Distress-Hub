@@ -18,6 +18,7 @@ export type DealCardProperty = {
   auctionDate: Date | string | null;
   imageUrls: string;
   pipelineStage: string;
+  source?: string;
 };
 
 export function DealCard({ p }: { p: DealCardProperty }) {
@@ -94,7 +95,14 @@ export function DealCard({ p }: { p: DealCardProperty }) {
         </div>
 
         <div className="mt-auto flex items-center justify-between border-t border-divider pt-3 text-xs text-text-dim">
-          <span className="font-medium text-gold-dark uppercase tracking-wider">{p.bank}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-gold-dark uppercase tracking-wider">{p.bank}</span>
+            {p.source && p.source !== "BAANKNET" && (
+              <span className="rounded-full bg-bg-alt border border-divider px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-text-dim">
+                {p.source}
+              </span>
+            )}
+          </div>
           <span className="flex items-center gap-1">
             {days != null && days > 0 ? (
               <>

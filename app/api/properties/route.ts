@@ -9,6 +9,7 @@ const QuerySchema = z.object({
   minScore: z.coerce.number().int().min(0).max(100).optional(),
   maxPrice: z.coerce.number().positive().optional(),
   possessionType: z.string().optional(),
+  source: z.string().optional(),
   pipelineStage: z.string().optional(),
   sort: z.enum(["score", "discount", "price-asc", "price-desc", "auction"]).default("score"),
   limit: z.coerce.number().int().positive().max(200).default(60),
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
   if (q.minScore !== undefined) where.dhScore = { gte: q.minScore };
   if (q.maxPrice !== undefined) where.reservePrice = { lte: q.maxPrice };
   if (q.possessionType) where.possessionType = q.possessionType;
+  if (q.source) where.source = q.source;
   if (q.pipelineStage) where.pipelineStage = q.pipelineStage;
 
   const orderBy: Record<string, "asc" | "desc"> =

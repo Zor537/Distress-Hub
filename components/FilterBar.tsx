@@ -12,6 +12,7 @@ export type Filters = {
   bank?: string;
   minScore?: string;
   possessionType?: string;
+  source?: string;
   sort?: string;
 };
 
@@ -113,6 +114,20 @@ export function FilterBar({ initial }: { initial: Filters }) {
           <option value="">All Possession</option>
           <option value="PHYSICAL">Physical</option>
           <option value="SYMBOLIC">Symbolic</option>
+        </Select>
+        <Select
+          aria-label="Source"
+          value={initial.source ?? ""}
+          onChange={(e) => apply("source", e.target.value)}
+        >
+          <option value="">All Sources</option>
+          <option value="BAANKNET">BAANKNET</option>
+          <option value="IBAPI">IBAPI</option>
+          <option value="IIG">India Investment Grid</option>
+          <option value="NARCL">NARCL</option>
+          <option value="NCLT">NCLT/IBBI</option>
+          <option value="PSB">Direct PSB</option>
+          <option value="MANUAL">Manual</option>
         </Select>
         <Select
           aria-label="Sort"
