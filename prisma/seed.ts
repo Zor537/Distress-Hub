@@ -1,11 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
+import { config as loadDotEnv } from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { computeDHScore } from "../lib/scoring";
 
-const dbUrl = process.env.DATABASE_URL ?? "file:./dev.db";
-const adapter = new PrismaBetterSqlite3({ url: dbUrl });
+// .env.local takes precedence; .env is fallback. dotenv won't override
+// already-set vars (e.g. when run via Vercel CLI).
+loadDotEnv({ path: path.resolve(process.cwd(), ".env.local") });
+loadDotEnv({ path: path.resolve(process.cwd(), ".env") });
+
+// Seed uses the direct connection (not the pooler) so DDL-adjacent operations
+// like long transactions work reliably.
+const connectionString =
+  process.env.DIRECT_URL ?? process.env.DATABASE_URL ?? "";
+const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 type SeedListing = {
@@ -41,6 +50,16 @@ async function main() {
   await prisma.investor.deleteMany();
   await prisma.property.deleteMany();
 
+  function detectSource(externalId: string): string {
+    if (externalId.startsWith("BKNT-")) return "BAANKNET";
+    if (externalId.startsWith("IIG-")) return "IIG";
+    if (externalId.startsWith("IBAPI-")) return "IBAPI";
+    if (externalId.startsWith("NARCL-")) return "NARCL";
+    if (externalId.startsWith("NCLT-")) return "NCLT";
+    if (externalId.startsWith("PSB-")) return "PSB";
+    return "MANUAL";
+  }
+
   for (const l of listings) {
     const dh = computeDHScore({
       city: l.city,
@@ -59,7 +78,7 @@ async function main() {
     await prisma.property.create({
       data: {
         externalId: l.externalId,
-        source: "BAANKNET",
+        source: detectSource(l.externalId),
         title: l.title,
         description: l.description ?? null,
         propertyType: l.propertyType,

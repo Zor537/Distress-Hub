@@ -105,7 +105,14 @@ export async function POST(req: Request) {
         possessionType: l.possessionType,
       });
 
-      const result = await prisma.property.upsert({
+      // Real Prisma upsert returns just the row, no created/updated flag.
+      // Detect existence first so we can keep clean telemetry counters.
+      const existing = await prisma.property.findUnique({
+        where: { externalId: l.externalId },
+        select: { id: true },
+      });
+
+      await prisma.property.upsert({
         where: { externalId: l.externalId },
         update: {
           title: l.title,
@@ -164,8 +171,8 @@ export async function POST(req: Request) {
         },
       });
 
-      if (result.created) added++;
-      else updated++;
+      if (existing) updated++;
+      else added++;
     } catch (err) {
       errors.push({
         externalId: l.externalId,

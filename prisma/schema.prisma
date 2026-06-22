@@ -1,10 +1,25 @@
-// DistressHub — Prisma schema
+// DistressHub — Postgres production schema variant.
+//
+// To switch from the in-memory store to real Postgres:
+//   1. Copy this file over prisma/schema.prisma
+//   2. Provision a Neon (or Vercel Postgres) DB and put DATABASE_URL in .env.local + Vercel env
+//   3. Run `npx prisma migrate dev --name init`
+//   4. In lib/db.ts, replace `export { store as prisma } from "./store"` with
+//      `import { PrismaClient } from "@prisma/client"; export const prisma = new PrismaClient()`
+//   5. Run `npx tsx prisma/seed.ts` to load seed/listings.json into Postgres
+//   6. Smoke test all routes — the API surface of the in-memory store matches Prisma's, so no
+//      route handlers should need changes
+//
+// The only delta from prisma/schema.prisma is:
+//   - provider: "sqlite" → "postgresql"
+//   - datasource adds `url = env("DATABASE_URL")` (Prisma 7 wants URL in schema for Postgres)
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Property {
@@ -55,6 +70,7 @@ model Property {
   @@index([dhScore])
   @@index([auctionDate])
   @@index([pipelineStage])
+  @@index([source])
 }
 
 model Investor {
@@ -85,15 +101,15 @@ model InvestorInterest {
 }
 
 model IngestRun {
-  id             String   @id @default(cuid())
-  source         String   // BAANKNET | IBAPI | IIG | NARCL | NCLT | PSB | MANUAL
-  startedAt      DateTime @default(now())
-  finishedAt     DateTime?
-  status         String   // RUNNING | SUCCESS | PARTIAL | FAILED
-  listingsTotal  Int      @default(0)
-  listingsAdded  Int      @default(0)
-  listingsUpdated Int     @default(0)
-  errorMessage   String?
+  id              String   @id @default(cuid())
+  source          String
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  status          String
+  listingsTotal   Int      @default(0)
+  listingsAdded   Int      @default(0)
+  listingsUpdated Int      @default(0)
+  errorMessage    String?
 
   @@index([source, startedAt])
 }
