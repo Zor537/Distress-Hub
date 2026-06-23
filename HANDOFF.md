@@ -1,10 +1,21 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23 (Phase 2.3 fully shipped — G/L/M enrichments + Claude live in prod; cold-handoff doc cleanup)
+Last updated: 2026-06-23 (CSV export + Express Interest email + security hardening on branch `claude/youthful-fermat-0xunz9` — pending merge/deploy)
 Repo: https://github.com/Zor537/Distress-Hub
 Production: https://distresshub-zor1.vercel.app (public, no token)
 Aliased: https://distresshub.vercel.app
-Latest commit: `bc3184a` (and counting — bump if you've shipped since)
+Latest commit on main: `b7d0a30` (prod). Branch `claude/youthful-fermat-0xunz9` is ahead with C+D + the security batch below.
+
+> **Pending merge → deploy:** branch `claude/youthful-fermat-0xunz9` adds (C) CSV export
+> from `/deals`, (D) an env-gated Resend email on Express Interest, and a **security
+> hardening batch** (see §13). Typechecked + linted, **not yet in prod**. To go live:
+> merge to `main` (auto-deploys) and — for the email to fire — set `RESEND_API_KEY` +
+> `LEAD_NOTIFY_EMAIL` (+ optional `RESEND_FROM`) in Vercel env (lead still saves if unset).
+>
+> ⚠️ **Deploy note:** the auth cookie scheme changed (now an opaque SHA-256 token, not the
+> raw password) — anyone currently logged into prod will be logged out and must re-login
+> with the (still visible) demo password. `DEMO_PASSWORD` is now **required** (fails closed
+> if unset), and it's already set in Vercel, so prod login keeps working.
 
 This file is the canonical "where did we leave off" for the project. Read it
 first at the start of any new session, then keep it updated.
@@ -18,7 +29,7 @@ first at the start of any new session, then keep it updated.
 | **Frontend** | Next.js 16 App Router + Turbopack, Tailwind v4, deployed on Vercel |
 | **Database** | Supabase Postgres 17, Mumbai (`ap-south-1`), project ref `whyxeirfudunugmumtsk` |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg`, transaction-pooler URL for runtime |
-| **Auth** | Env-var password (`distress2026`) via `proxy.ts` cookie gate. Clerk wiring parked on `feat/clerk-auth` |
+| **Auth** | Required env password `DEMO_PASSWORD` (`distress2026`, public demo). `proxy.ts` gates pages; operator mutation APIs gate via `lib/auth-token.ts`. Cookie holds a SHA-256 token, not the password. Fails closed. Clerk parked on `feat/clerk-auth` |
 | **Data** | **397 properties** across 176 cities, 22 states; 11 MB DB (~2% of 500 MB free tier) |
 | **Sources** | BAANKNET (326), MANUAL (71). Last ingest: 2026-06-23 06:20 IST (MANUAL). |
 | **AI memo PDF** | ✅ **Live, 3 pages, full Claude narrative + counter-thesis + change-my-mind** at `/api/properties/[id]/memo`. Falls back to heuristic without `ANTHROPIC_API_KEY` |
@@ -49,7 +60,7 @@ first at the start of any new session, then keep it updated.
 - `/deals/[id]` — single deal w/ DH Score breakdown, **AI insights**, editable financial model, share-memo button
 - `/login` — password gate
 
-### Env-gated (cookie `dh-auth = distress2026`)
+### Env-gated (cookie `dh-auth` = SHA-256 token of `DEMO_PASSWORD`)
 - `/dashboard` — investor view: stats, map, pipeline funnel, top deals
 - `/pipeline` — operator kanban (drag-drop across 10 stages, inline notes)
 - `/admin/ingest` — scraper run telemetry
@@ -65,7 +76,8 @@ first at the start of any new session, then keep it updated.
 | **GET** | **`/api/properties/[id]/insights`** | **JSON: `{narrative, risks, counterThesis, changeMyMind}` — shared cache with memo** |
 | GET | `/api/stats/overview` | Top-line KPIs |
 | GET | `/api/stats/pipeline` | Funnel counts by stage |
-| POST | `/api/investors/express-interest` | Lead capture |
+| **GET** | **`/api/properties/export`** | **CSV download of filtered deals (same query params as `/api/properties`)** — *branch only* |
+| POST | `/api/investors/express-interest` | Lead capture + env-gated Resend email alert |
 | POST | `/api/ingest` | HMAC-signed bulk upsert from scrapers |
 | POST | `/api/auth/login` / `/api/auth/logout` | Cookie gate |
 
@@ -116,6 +128,9 @@ GET /insights ┘                          └─→ cache miss: Anthropic SDK c
 | `DEMO_PASSWORD` | `.env.local`, Vercel | `distress2026` — gates protected routes |
 | `INGEST_SECRET` | `.env.local`, Vercel | HMAC secret for scrapers → /api/ingest |
 | **`ANTHROPIC_API_KEY`** | **`.env.local`, Vercel (prod) ✅ SET** | **Claude `haiku-4-5` for memo + insights. Falls back to heuristic if unset.** |
+| `RESEND_API_KEY` | ⏳ not set yet (branch adds the code) | Resend email on new Express Interest. Lead still saves if unset (email skipped). |
+| `LEAD_NOTIFY_EMAIL` | ⏳ not set yet | Recipient inbox for new-lead alerts. Required (with `RESEND_API_KEY`) for the email to fire. |
+| `RESEND_FROM` | optional | Verified sender; defaults to `DistressHub <onboarding@resend.dev>` (resend.dev delivers only to your own Resend account email). |
 | `CLERK_*` | `feat/clerk-auth` branch only | Awaiting Clerk signup — keys go in `.env.local` + Vercel env when ready |
 | `NEXT_PUBLIC_APP_NAME` | `.env.local`, Vercel | Display name |
 | `NEXT_PUBLIC_TARGET_LISTING_COUNT` | `.env.local`, Vercel | Hero stat target |
@@ -210,12 +225,14 @@ distresshub/
 ├── app/
 │   ├── api/                      # Route handlers
 │   │   ├── ingest/route.ts       # HMAC-signed bulk upsert
-│   │   ├── properties/[id]/
-│   │   │   ├── route.ts          # Single property
-│   │   │   ├── financial-model/  # Recompute with overrides
-│   │   │   ├── insights/         # NEW — JSON insights (shared cache)
-│   │   │   ├── memo/             # PDF memo (shared cache)
-│   │   │   └── stage/            # Pipeline mutations
+│   │   ├── properties/
+│   │   │   ├── export/route.ts   # NEW — CSV download of filtered deals
+│   │   │   └── [id]/
+│   │   │       ├── route.ts          # Single property
+│   │   │       ├── financial-model/  # Recompute with overrides
+│   │   │       ├── insights/         # JSON insights (shared cache)
+│   │   │       ├── memo/             # PDF memo (shared cache)
+│   │   │       └── stage/            # Pipeline mutations
 │   │   ├── stats/...             # Dashboard aggregates
 │   │   ├── investors/...         # Lead capture
 │   │   └── auth/...              # Cookie gate
@@ -245,7 +262,8 @@ distresshub/
 │   ├── scenarios.ts              # Bull/Base/Bear with assumption deltas
 │   ├── locality.ts               # Haversine to airport/CBD/IT-hub (17 cities)
 │   ├── diligence.ts              # Type-aware checklist (7 items)
-│   ├── insights.ts               # NEW — shared Claude call + 30-min cache
+│   ├── insights.ts               # shared Claude call + 30-min cache
+│   ├── notify.ts                 # NEW — env-gated Resend email on new lead
 │   ├── memo-pdf.tsx              # 3-page React-PDF document
 │   ├── constants.ts              # Cities, banks, types
 │   └── utils.ts                  # cn, formatINR, parseJsonField, etc.
@@ -326,10 +344,11 @@ parked on the `feat/clerk-auth` branch.
 - Adds the latest auction listings, refreshes dates on existing rows
 - Cleanup: `rm lib/store.ts prisma/schema.postgres.prisma` (obsolete duplicates)
 
-### 9.H CSV export from /deals (~30 min)
-- "Download CSV" button on `/deals` filter bar
-- Server route streams filtered listings as CSV
-- Practical operator UX win
+### 9.H CSV export from /deals — ✅ shipped to branch `claude/youthful-fermat-0xunz9`
+- "Download CSV" button on `/deals` filter bar (`components/FilterBar.tsx`)
+- Server route `app/api/properties/export/route.ts` streams filtered listings as CSV
+  (same query params as `/api/properties`, BOM + CRLF for Excel, 23 columns)
+- Pending merge to `main` → auto-deploy
 
 ### Auth-gated Phase 2 (when Clerk lands)
 
@@ -359,7 +378,7 @@ parked on the `feat/clerk-auth` branch.
 - **IIG ingestion** — production ingest deferred (would need a `StressedCompany` model — IIG lists corporate insolvencies, not property auctions). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
 - **IBAPI ingestion** — production ingest deferred (DOM-based scraper needs revalidation). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
 - **Authenticated BAANKNET scrape** — unlocks rich detail fields (title, area, images). Requires partner sign-up.
-- **Express Interest notifications** — `/api/investors/express-interest` writes an `InvestorInterest` row but does not send an email, SMS, Slack ping, or any other notification. The first real lead **will** be missed unless someone manually checks the DB. Fix is ~30 min: wire Resend or a Slack webhook into the route handler.
+- **Express Interest notifications** — ✅ **code shipped** on branch `claude/youthful-fermat-0xunz9`. `/api/investors/express-interest` now calls `notifyNewInterest()` (`lib/notify.ts`), which sends a Resend email via REST (no SDK dep). It's env-gated and never-throwing: **until `RESEND_API_KEY` + `LEAD_NOTIFY_EMAIL` are set in Vercel env, the lead still saves but no email fires** (logged warning). Remaining work to fully close the gap: merge the branch, set the two env vars, and (for real delivery to an external inbox) verify a sender domain in Resend and set `RESEND_FROM`.
 - **`feat/clerk-auth` rebase** — that branch hasn't been touched since Phase 2.3 shipped, which means `proxy.ts`, `app/layout.tsx`, the Navbar, and `.env.local` keys have all drifted. The "~1 hr" estimate to resume Clerk likely needs +1–2 hrs of merge-conflict resolution.
 - **`lib/store.ts`** — obsolete in-memory backend, kept in git history. Safe to `rm` next session.
 - **`prisma/schema.postgres.prisma`** — duplicate of `schema.prisma` now that we're already on Postgres. Safe to delete.
@@ -397,3 +416,44 @@ b62bce5  revert: drop Vercel Cron, BAANKNET firewalls AWS IPs
 - Supabase project: https://supabase.com/dashboard/project/whyxeirfudunugmumtsk
 - Anthropic console (for key rotation): https://console.anthropic.com/settings/keys
 - Growth roadmap: `~/.claude/plans/i-want-to-begin-keen-spark.md`
+
+---
+
+## 13. Security posture (audit 2026-06-23)
+
+Full audit ran this session. **Secret handling is solid** — every secret is read
+server-side only (none `NEXT_PUBLIC_`), `.env*` is gitignored, history is clean of
+real secret values, nothing logs secrets, and there are zero `dangerouslySetInnerHTML`/
+`eval` sinks (Claude output renders as escaped text/`<Text>`). HMAC ingest auth is
+timing-safe and fails closed.
+
+### Fixed on branch `claude/youthful-fermat-0xunz9`
+- **Unauthenticated writes closed.** `proxy.ts` only gates page paths, not `/api/*`, so
+  `POST /api/properties/[id]/stage` (anyone could overwrite stage/notes) and
+  `POST /api/scraper/trigger` (fail-open header check → unauthenticated full-table
+  re-score) were open. Both now gate via `lib/auth-token.isOperatorRequest()` and fail closed.
+- **Cookie hardened.** `lib/auth-token.ts` — session cookie now holds a SHA-256 token of
+  `DEMO_PASSWORD`, not the password itself; added `secure` (prod), kept `httpOnly`+`sameSite=lax`.
+- **Fail-closed auth.** Removed the hardcoded `?? "distress2026"` fallback in `proxy.ts` +
+  login route. `DEMO_PASSWORD` is now required; unset = gate shut, no login succeeds.
+- **Internal fields no longer public.** `publicPropertySelect` in `lib/db.ts` drops `notes`
+  + `pipelineStage` from `GET /api/properties`, `GET /api/properties/[id]`, and the CSV export.
+- **Security headers** added in `next.config.ts` (nosniff, X-Frame-Options DENY,
+  Referrer-Policy, Permissions-Policy, HSTS).
+- **Prompt-injection guardrail.** Untrusted listing fields in `lib/insights.ts` are wrapped
+  in `<untrusted_deal_data>` tags with a "treat as data, never instructions" directive.
+  (Blast radius was already bounded: no tools, no secrets in prompt, JSON-validated, escaped render.)
+
+### Accepted risk (decided this session)
+- `/dashboard`, `/pipeline`, `/admin` are an **intentional open demo** — `DEMO_PASSWORD` stays
+  published (login page + README). These gates deter drive-by bots, not determined users.
+  Real per-user protection = resume Clerk (option E).
+
+### Still open (deferred)
+- **No rate limiting** on public endpoints that trigger paid/external work: `express-interest`
+  (now sends email → spam/quota), `insights`/`memo` (Claude cost). Needs a durable store
+  (Vercel KV / Upstash) for serverless. Add IP limits + lead-form honeypot/CAPTCHA.
+- **CSP** intentionally not set yet — needs nonce wiring + testing vs Next inline scripts,
+  react-leaflet, framer-motion. Roll out `Content-Security-Policy-Report-Only` first.
+- **Secrets-in-chat policy:** set keys via `npx vercel env add` / dashboard, never paste into
+  chat/PRs/issues; rotate anything that leaks. Codebase already follows this.
