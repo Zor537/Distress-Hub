@@ -303,6 +303,35 @@ const styles = StyleSheet.create({
   diligenceTitle: { fontSize: 8, color: COLORS.text, fontWeight: 700, marginTop: 1 },
   diligenceWhy: { fontSize: 7, color: COLORS.textDim, lineHeight: 1.35, marginTop: 1 },
 
+  // ---- Counter-thesis (L) ----
+  counterCard: {
+    backgroundColor: COLORS.bgAlt,
+    borderColor: COLORS.danger,
+    borderLeftColor: COLORS.danger,
+    borderLeftWidth: 2,
+    borderWidth: 0.3,
+    borderRadius: 3,
+    padding: 8,
+    marginBottom: 6,
+  },
+  counterPara: { fontSize: 8, color: COLORS.text, lineHeight: 1.55 },
+
+  // ---- Change my mind (G) ----
+  changeItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginBottom: 4,
+  },
+  changeBullet: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.warning,
+    marginTop: 5,
+  },
+  changeText: { flex: 1, fontSize: 7.5, color: COLORS.text, lineHeight: 1.4 },
+
   // ---- Footer ----
   footer: {
     position: "absolute",
@@ -378,6 +407,8 @@ export type MemoData = {
   locality: Locality;
   diligence: DiligenceItem[];
   risks: Risk[];
+  counterThesis: string;
+  changeMyMind: string[];
 };
 
 const SIGNALS_META: { key: keyof Signals; label: string; weight: number }[] = [
@@ -453,7 +484,7 @@ function Hero({ property }: { property: MemoData["property"] }) {
 }
 
 export function MemoDocument({ data }: { data: MemoData }) {
-  const { property: p, signals, explanations, financial, narrative, scenarios, sensitivity, locality, diligence, risks } = data;
+  const { property: p, signals, explanations, financial, narrative, scenarios, sensitivity, locality, diligence, risks, counterThesis, changeMyMind } = data;
 
   return (
     <Document>
@@ -752,6 +783,27 @@ export function MemoDocument({ data }: { data: MemoData }) {
                 <Text style={styles.diligenceWhy}>{d.why}</Text>
               </View>
             ))}
+          </View>
+        </View>
+
+        {/* Full-width row: Counter-thesis (L) + Change my mind (G) */}
+        <View style={{ flexDirection: "row", gap: 14, marginTop: 12 }}>
+          <View style={{ flex: 1.6 }}>
+            <Text style={styles.sectionTitle}>Counter-Thesis · Why we'd pass</Text>
+            <View style={styles.counterCard}>
+              <Text style={styles.counterPara}>{counterThesis}</Text>
+            </View>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionTitle}>What Would Change Our Mind</Text>
+            <View style={styles.sidebarCard}>
+              {changeMyMind.map((item, i) => (
+                <View key={i} style={styles.changeItem}>
+                  <View style={styles.changeBullet} />
+                  <Text style={styles.changeText}>{item}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         </View>
 

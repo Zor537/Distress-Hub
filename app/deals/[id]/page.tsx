@@ -20,6 +20,8 @@ import { FinancialModel } from "@/components/FinancialModel";
 import { PropertyMap } from "@/components/PropertyMap";
 import { ExpressInterest } from "@/components/ExpressInterest";
 import { GenerateMemoButton } from "@/components/GenerateMemoButton";
+import { ShareMemoButton } from "@/components/ShareMemoButton";
+import { DealInsights } from "@/components/DealInsights";
 import { formatINR, formatPct, formatDate, daysUntil, parseJsonField } from "@/lib/utils";
 import type { Signals, SignalExplanations } from "@/lib/scoring";
 
@@ -106,6 +108,9 @@ export default async function DealDetail({ params }: { params: Promise<{ id: str
                 <div className="mt-3">
                   <GenerateMemoButton propertyId={p.id} propertyTitle={p.title} />
                 </div>
+                <div className="mt-2">
+                  <ShareMemoButton propertyId={p.id} />
+                </div>
                 <Link
                   href={p.sourceUrl}
                   target="_blank"
@@ -170,6 +175,11 @@ export default async function DealDetail({ params }: { params: Promise<{ id: str
                 Score pending. Run <code className="font-mono text-gold-light">/api/scraper/trigger</code> to re-score.
               </div>
             )}
+          </div>
+
+          <div className="mt-10">
+            <h2 className="font-display text-2xl mb-4">AI Insights</h2>
+            <DealInsights propertyId={p.id} />
           </div>
 
           <div className="mt-10">
