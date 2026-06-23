@@ -19,6 +19,7 @@ import { DHScoreCard } from "@/components/DHScoreCard";
 import { FinancialModel } from "@/components/FinancialModel";
 import { PropertyMap } from "@/components/PropertyMap";
 import { ExpressInterest } from "@/components/ExpressInterest";
+import { GenerateMemoButton } from "@/components/GenerateMemoButton";
 import { formatINR, formatPct, formatDate, daysUntil, parseJsonField } from "@/lib/utils";
 import type { Signals, SignalExplanations } from "@/lib/scoring";
 
@@ -102,6 +103,9 @@ export default async function DealDetail({ params }: { params: Promise<{ id: str
                 )}
                 <div className="my-5 h-px bg-divider" />
                 <ExpressInterest propertyId={p.id} propertyTitle={p.title} />
+                <div className="mt-3">
+                  <GenerateMemoButton propertyId={p.id} propertyTitle={p.title} />
+                </div>
                 <Link
                   href={p.sourceUrl}
                   target="_blank"
