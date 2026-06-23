@@ -1,21 +1,34 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23 (CSV export + Express Interest email + security hardening on branch `claude/youthful-fermat-0xunz9` — pending merge/deploy)
+Last updated: 2026-06-23 (CSV export + Express Interest email + security hardening — **merged to `main` via PR #1**). ⚠️ Prod URL is 403 to automated checks — needs a human browser check (action item 1 below).
 Repo: https://github.com/Zor537/Distress-Hub
-Production: https://distresshub-zor1.vercel.app (public, no token)
+Production: https://distresshub-zor1.vercel.app — ⚠️ **currently returns 403 to automated/cloud IPs** (see action item 1)
 Aliased: https://distresshub.vercel.app
-Latest commit on main: `b7d0a30` (prod). Branch `claude/youthful-fermat-0xunz9` is ahead with C+D + the security batch below.
+Latest commit on main: `3e7a3de` (Merge PR #1). Prior prod baseline: `b7d0a30`.
 
-> **Pending merge → deploy:** branch `claude/youthful-fermat-0xunz9` adds (C) CSV export
-> from `/deals`, (D) an env-gated Resend email on Express Interest, and a **security
-> hardening batch** (see §13). Typechecked + linted, **not yet in prod**. To go live:
-> merge to `main` (auto-deploys) and — for the email to fire — set `RESEND_API_KEY` +
-> `LEAD_NOTIFY_EMAIL` (+ optional `RESEND_FROM`) in Vercel env (lead still saves if unset).
+> **✅ Shipped this session — merged to `main` via [PR #1](https://github.com/Zor537/Distress-Hub/pull/1) (`3e7a3de`):**
+> (C) CSV export from `/deals`, (D) env-gated Resend email on Express Interest, and a
+> **security hardening batch** (§13). All typechecked + linted, auth-gate unit-tested; the
+> exact code built green on Vercel pre-merge.
 >
-> ⚠️ **Deploy note:** the auth cookie scheme changed (now an opaque SHA-256 token, not the
-> raw password) — anyone currently logged into prod will be logged out and must re-login
-> with the (still visible) demo password. `DEMO_PASSWORD` is now **required** (fails closed
-> if unset), and it's already set in Vercel, so prod login keeps working.
+> **⏳ Action items for next session (verify/finish — none are code blockers):**
+> 1. **Prod URL returns `403`** on `/`, `/deals`, and the CSV route — from *two* independent
+>    egress paths (sandbox curl + Anthropic fetcher), so it's the site, not the tooling. The
+>    root isn't auth-gated, so this is **not our code** — almost certainly Vercel **Deployment
+>    Protection** (Trusted-IPs/allowlist or auth) on the production deployment, which contradicts
+>    the "public" note above. **Open https://distresshub-zor1.vercel.app/ in a browser:** if it
+>    loads, it's just IP-blocking of automation (harmless); if you also hit 403/a wall, adjust
+>    Vercel → distresshub → Settings → Deployment Protection. Then confirm the latest Production
+>    deploy shows "Ready".
+> 2. **Set `RESEND_API_KEY` + `LEAD_NOTIFY_EMAIL`** (+ optional `RESEND_FROM` with a verified
+>    sender domain) in Vercel env — until then Express Interest leads save but **no email fires**.
+> 3. Couldn't read live deploy state via Vercel MCP this session (`get_deployment` /
+>    `list_deployments` threw transport "overflow" errors; `list_projects` worked). Retry if needed.
+>
+> **Deploy note:** the auth cookie scheme changed (opaque SHA-256 token, not the raw password) —
+> anyone logged into prod gets logged out once and re-logs in with the (still visible) demo
+> password. `DEMO_PASSWORD` is now **required** (fails closed if unset); it's set in Vercel, so
+> login keeps working.
 
 This file is the canonical "where did we leave off" for the project. Read it
 first at the start of any new session, then keep it updated.
@@ -76,7 +89,7 @@ first at the start of any new session, then keep it updated.
 | **GET** | **`/api/properties/[id]/insights`** | **JSON: `{narrative, risks, counterThesis, changeMyMind}` — shared cache with memo** |
 | GET | `/api/stats/overview` | Top-line KPIs |
 | GET | `/api/stats/pipeline` | Funnel counts by stage |
-| **GET** | **`/api/properties/export`** | **CSV download of filtered deals (same query params as `/api/properties`)** — *branch only* |
+| **GET** | **`/api/properties/export`** | **CSV download of filtered deals (same query params as `/api/properties`; omits internal `notes`/`pipelineStage`)** |
 | POST | `/api/investors/express-interest` | Lead capture + env-gated Resend email alert |
 | POST | `/api/ingest` | HMAC-signed bulk upsert from scrapers |
 | POST | `/api/auth/login` / `/api/auth/logout` | Cookie gate |
@@ -427,7 +440,7 @@ real secret values, nothing logs secrets, and there are zero `dangerouslySetInne
 `eval` sinks (Claude output renders as escaped text/`<Text>`). HMAC ingest auth is
 timing-safe and fails closed.
 
-### Fixed on branch `claude/youthful-fermat-0xunz9`
+### Fixed — merged to `main` via PR #1 (`3e7a3de`)
 - **Unauthenticated writes closed.** `proxy.ts` only gates page paths, not `/api/*`, so
   `POST /api/properties/[id]/stage` (anyone could overwrite stage/notes) and
   `POST /api/scraper/trigger` (fail-open header check → unauthenticated full-table
