@@ -1,10 +1,10 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23 (Phase 2.3 fully shipped — G/L/M enrichments + Claude live in prod)
+Last updated: 2026-06-23 (Phase 2.3 fully shipped — G/L/M enrichments + Claude live in prod; cold-handoff doc cleanup)
 Repo: https://github.com/Zor537/Distress-Hub
 Production: https://distresshub-zor1.vercel.app (public, no token)
 Aliased: https://distresshub.vercel.app
-Latest commit: `d7f7319` — `feat: G+L+M memo enrichments live on PDF and webpage`
+Latest commit: `bc3184a` (and counting — bump if you've shipped since)
 
 This file is the canonical "where did we leave off" for the project. Read it
 first at the start of any new session, then keep it updated.
@@ -19,21 +19,21 @@ first at the start of any new session, then keep it updated.
 | **Database** | Supabase Postgres 17, Mumbai (`ap-south-1`), project ref `whyxeirfudunugmumtsk` |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg`, transaction-pooler URL for runtime |
 | **Auth** | Env-var password (`distress2026`) via `proxy.ts` cookie gate. Clerk wiring parked on `feat/clerk-auth` |
-| **Data** | **401 properties** across 179 cities, 22 states; 11 MB DB (~2% of 500 MB free tier) |
-| **Sources** | BAANKNET (326), MANUAL (71), IBAPI (2 test rows), IIG (2 test rows). Last ingest: 2026-06-23 06:20 IST (MANUAL). |
+| **Data** | **397 properties** across 176 cities, 22 states; 11 MB DB (~2% of 500 MB free tier) |
+| **Sources** | BAANKNET (326), MANUAL (71). Last ingest: 2026-06-23 06:20 IST (MANUAL). |
 | **AI memo PDF** | ✅ **Live, 3 pages, full Claude narrative + counter-thesis + change-my-mind** at `/api/properties/[id]/memo`. Falls back to heuristic without `ANTHROPIC_API_KEY` |
 | **AI insights JSON** | ✅ **Live** at `/api/properties/[id]/insights` — same Claude payload as PDF, shared 30-min cache |
 | **Deal page enrichments** | ✅ **`DealInsights`** component + **`ShareMemoButton`** + memo download — narrative, counter-thesis, change-my-mind in-page |
 | **Deployment protection** | Disabled — production URL is public |
 
-### Top-of-mind numbers (live, 2026-06-23)
-- **401** total properties · **179** cities · **22** states · pan-India
+### Top-of-mind numbers (live, 2026-06-23, post-cleanup)
+- **397** total properties · **176** cities · **22** states · pan-India
 - **16** distinct banks (incl. Bank of Maharashtra, Indian Bank, Indian Overseas Bank, Central Bank of India via BAANKNET)
 - **6** ingest runs visible at `/admin/ingest`; last run 2026-06-23 06:20 IST
-- **133** properties with auctions still upcoming
+- **129** properties with auctions still upcoming
 - DH Score: **avg 54**, **21** properties at ≥ 80 (the "hot deals" tier surfaced on `/dashboard`)
-- Lead pipeline: **0** Express Interest submissions to date (no leads from public traffic yet)
-- DB: **11 MB** used of 500 MB free tier; ~4,000 properties of headroom before Supabase Pro is needed
+- Lead pipeline: **0** Express Interest submissions to date (no leads from public traffic yet) — see §10 for the notification gap
+- DB: **11 MB** used of 500 MB free tier; ~14× headroom (room for ~4,000+ properties) before Supabase Pro is needed
 - Memo PDF: 3 pages, ~3–8 s cold (Claude call), instant on cache hit. Valid PDF v1.3.
 - Claude calls cached 30 min per property — PDF + webpage insights share the same cache.
 - Anthropic spend to date: **< $1** (well under any threshold; see [COST_GUIDE.md](COST_GUIDE.md))
@@ -356,9 +356,11 @@ parked on the `feat/clerk-auth` branch.
 ## 10. Decisions deferred (parked, not abandoned)
 
 - **Vercel Cron for BAANKNET** — blocked at TCP. Revisit after partner whitelist.
-- **IIG ingestion** — 2 stale test rows in prod from the original scrape attempt; production ingest deferred (would need a `StressedCompany` model — IIG lists corporate insolvencies, not property auctions).
-- **IBAPI ingestion** — 2 stale test rows in prod from the scaffold attempt; production ingest deferred (DOM-based scraper needs revalidation).
+- **IIG ingestion** — production ingest deferred (would need a `StressedCompany` model — IIG lists corporate insolvencies, not property auctions). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
+- **IBAPI ingestion** — production ingest deferred (DOM-based scraper needs revalidation). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
 - **Authenticated BAANKNET scrape** — unlocks rich detail fields (title, area, images). Requires partner sign-up.
+- **Express Interest notifications** — `/api/investors/express-interest` writes an `InvestorInterest` row but does not send an email, SMS, Slack ping, or any other notification. The first real lead **will** be missed unless someone manually checks the DB. Fix is ~30 min: wire Resend or a Slack webhook into the route handler.
+- **`feat/clerk-auth` rebase** — that branch hasn't been touched since Phase 2.3 shipped, which means `proxy.ts`, `app/layout.tsx`, the Navbar, and `.env.local` keys have all drifted. The "~1 hr" estimate to resume Clerk likely needs +1–2 hrs of merge-conflict resolution.
 - **`lib/store.ts`** — obsolete in-memory backend, kept in git history. Safe to `rm` next session.
 - **`prisma/schema.postgres.prisma`** — duplicate of `schema.prisma` now that we're already on Postgres. Safe to delete.
 
@@ -367,17 +369,16 @@ parked on the `feat/clerk-auth` branch.
 ## 11. Commit history (this stretch + Phase 2.3)
 
 ```
-d7f7319  feat: G+L+M memo enrichments live on PDF and webpage     ← HEAD
+bc3184a  docs: refresh HANDOFF top-of-mind numbers from live Supabase    ← HEAD before this commit
+9177e80  docs: add COST_GUIDE for platform usage
+ed026ea  docs: refresh HANDOFF for G/L/M + 10-enrichment memo
+d7f7319  feat: G+L+M memo enrichments live on PDF and webpage
 afdf306  feat: enrich AI memo with 7 additions, expand to 2 pages
 0da74a5  docs: update HANDOFF after Phase 2.3 + pan-India data depth
 2b6306e  feat: pan-India data depth — 70 hand-curated Mumbai/BLR/HYD listings
 a1fbb6b  feat: AI investor memo PDF generator
 1641cd9  docs: HANDOFF.md, canonical session state + Phase 2 to-do
 b62bce5  revert: drop Vercel Cron, BAANKNET firewalls AWS IPs
-1095156  chore: probe BAANKNET + control hosts from Vercel
-3ec408d  chore: debug endpoint for BAANKNET reachability from Vercel
-24fd497  chore: better error logging in cron-baanknet
-7874701  feat: Vercel Cron — daily BAANKNET refresh    (reverted in b62bce5)
 02c3d7c  feat: BAANKNET production scraper, 276 listings ingested
 44572a5  feat: migrate from in-memory store to Supabase Postgres
 8b3fae3  feat(phase1): ingest endpoint, scraper toolkit, admin telemetry

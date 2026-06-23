@@ -1,9 +1,10 @@
 # DistressHub Cost Guide
 
-Last updated: 2026-06-23 (against commit `ed026ea`)
+Last updated: 2026-06-23 (against commit `bc3184a`)
 
 **Current state:** Everything runs on free tiers + ~$0 API spend. The platform's
-binding cost ceiling is **Vercel function execution**, not Anthropic.
+binding cost ceiling is **Vercel function execution** (not Anthropic) for compute,
+and **Supabase bandwidth** (not DB size — only 11 MB used) for data egress.
 
 ---
 
@@ -56,8 +57,11 @@ No Anthropic prompt-cache discount applies — the in-process `Map` cache in
 
 ## 3. Monthly cost projections by scale
 
-Assumes 30-min cache hit rate of ~50% (i.e., every other view triggers a new
-Claude call). Each "unique memo" = one Claude call.
+Assumes a 30-min cache hit rate of ~50% (i.e., every other view triggers a
+new Claude call). **This is a modeling assumption, not a measurement** —
+production has < 100 memo views to date, well below any meaningful hit-rate
+signal. Real rate will depend on traffic shape; recompute the column once
+production usage exceeds ~10K views/month.
 
 | Scenario | Page views/mo | Unique memos/mo | Anthropic | Vercel | Supabase | **Total** |
 |---|---|---|---|---|---|---|
@@ -76,7 +80,7 @@ Vercel and Supabase upgrades are the bigger jumps.
 
 | Trigger | Action | Cost |
 |---|---|---|
-| Supabase DB approaches 500 MB (currently ~50 MB at 401 properties → ~10× headroom = ~4,000 properties on free) | Upgrade Supabase Pro | +$25/mo |
+| Supabase DB approaches 500 MB (currently **11 MB at 397 properties** → ~45× headroom by size, but bandwidth ceiling will hit first at ~5 GB/month egress) | Upgrade Supabase Pro | +$25/mo |
 | Supabase free tier auto-pauses during demos | Upgrade Supabase Pro (no pause) | +$25/mo |
 | Vercel function execution > 80 GB-hours/mo (rough threshold: ~15,000 cold memo calls) | Upgrade Vercel Pro | +$20/mo |
 | Vercel bandwidth > 80 GB/mo | Vercel Pro adds 1 TB | +$20/mo |
