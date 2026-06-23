@@ -19,19 +19,24 @@ first at the start of any new session, then keep it updated.
 | **Database** | Supabase Postgres 17, Mumbai (`ap-south-1`), project ref `whyxeirfudunugmumtsk` |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg`, transaction-pooler URL for runtime |
 | **Auth** | Env-var password (`distress2026`) via `proxy.ts` cookie gate. Clerk wiring parked on `feat/clerk-auth` |
-| **Data** | **401 properties** (50 NCR seed + 276 BAANKNET scraped + 70 hand-curated Mumbai/BLR/HYD + 5 extras) |
-| **Sources** | BAANKNET ✅ live (326), MANUAL ✅ (75), IIG ⊘ deferred, IBAPI 🔨 scaffolded |
+| **Data** | **401 properties** across 179 cities, 22 states; 11 MB DB (~2% of 500 MB free tier) |
+| **Sources** | BAANKNET (326), MANUAL (71), IBAPI (2 test rows), IIG (2 test rows). Last ingest: 2026-06-23 06:20 IST (MANUAL). |
 | **AI memo PDF** | ✅ **Live, 3 pages, full Claude narrative + counter-thesis + change-my-mind** at `/api/properties/[id]/memo`. Falls back to heuristic without `ANTHROPIC_API_KEY` |
 | **AI insights JSON** | ✅ **Live** at `/api/properties/[id]/insights` — same Claude payload as PDF, shared 30-min cache |
 | **Deal page enrichments** | ✅ **`DealInsights`** component + **`ShareMemoButton`** + memo download — narrative, counter-thesis, change-my-mind in-page |
 | **Deployment protection** | Disabled — production URL is public |
 
-### Top-of-mind numbers (snapshot at handoff)
-- **401** total properties, pan-India coverage (NCR + Mumbai + Bangalore + Hyderabad + 170+ other cities from BAANKNET)
-- **15** distinct banks (incl. Bank of Maharashtra, Indian Bank, Indian Overseas Bank, Central Bank of India)
-- **6+** ingest runs visible at `/admin/ingest`
+### Top-of-mind numbers (live, 2026-06-23)
+- **401** total properties · **179** cities · **22** states · pan-India
+- **16** distinct banks (incl. Bank of Maharashtra, Indian Bank, Indian Overseas Bank, Central Bank of India via BAANKNET)
+- **6** ingest runs visible at `/admin/ingest`; last run 2026-06-23 06:20 IST
+- **133** properties with auctions still upcoming
+- DH Score: **avg 54**, **21** properties at ≥ 80 (the "hot deals" tier surfaced on `/dashboard`)
+- Lead pipeline: **0** Express Interest submissions to date (no leads from public traffic yet)
+- DB: **11 MB** used of 500 MB free tier; ~4,000 properties of headroom before Supabase Pro is needed
 - Memo PDF: 3 pages, ~3–8 s cold (Claude call), instant on cache hit. Valid PDF v1.3.
 - Claude calls cached 30 min per property — PDF + webpage insights share the same cache.
+- Anthropic spend to date: **< $1** (well under any threshold; see [COST_GUIDE.md](COST_GUIDE.md))
 
 ---
 
@@ -351,8 +356,8 @@ parked on the `feat/clerk-auth` branch.
 ## 10. Decisions deferred (parked, not abandoned)
 
 - **Vercel Cron for BAANKNET** — blocked at TCP. Revisit after partner whitelist.
-- **IIG ingestion** — would need a `StressedCompany` model. Skipped.
-- **IBAPI ingestion** — scaffolded but DOM-based; needs revalidation.
+- **IIG ingestion** — 2 stale test rows in prod from the original scrape attempt; production ingest deferred (would need a `StressedCompany` model — IIG lists corporate insolvencies, not property auctions).
+- **IBAPI ingestion** — 2 stale test rows in prod from the scaffold attempt; production ingest deferred (DOM-based scraper needs revalidation).
 - **Authenticated BAANKNET scrape** — unlocks rich detail fields (title, area, images). Requires partner sign-up.
 - **`lib/store.ts`** — obsolete in-memory backend, kept in git history. Safe to `rm` next session.
 - **`prisma/schema.postgres.prisma`** — duplicate of `schema.prisma` now that we're already on Postgres. Safe to delete.
