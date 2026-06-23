@@ -1,10 +1,17 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23 (Phase 2.3 fully shipped — G/L/M enrichments + Claude live in prod; cold-handoff doc cleanup)
+Last updated: 2026-06-23 (CSV export + Express Interest email shipped to branch `claude/youthful-fermat-0xunz9` — pending merge/deploy)
 Repo: https://github.com/Zor537/Distress-Hub
 Production: https://distresshub-zor1.vercel.app (public, no token)
 Aliased: https://distresshub.vercel.app
-Latest commit: `bc3184a` (and counting — bump if you've shipped since)
+Latest commit on main: `b7d0a30` (prod). Branch `claude/youthful-fermat-0xunz9` is ahead with C+D below.
+
+> **Pending merge → deploy:** branch `claude/youthful-fermat-0xunz9` adds (C) CSV export
+> from `/deals` and (D) an env-gated Resend email on Express Interest. Both typechecked +
+> linted, **not yet in prod**. To go live: merge to `main` (auto-deploys) and — for the
+> email to actually fire — set `RESEND_API_KEY` + `LEAD_NOTIFY_EMAIL` (+ optional
+> `RESEND_FROM`) in Vercel env. Without those vars the lead is still saved; the email is
+> skipped with a logged warning.
 
 This file is the canonical "where did we leave off" for the project. Read it
 first at the start of any new session, then keep it updated.
@@ -65,7 +72,8 @@ first at the start of any new session, then keep it updated.
 | **GET** | **`/api/properties/[id]/insights`** | **JSON: `{narrative, risks, counterThesis, changeMyMind}` — shared cache with memo** |
 | GET | `/api/stats/overview` | Top-line KPIs |
 | GET | `/api/stats/pipeline` | Funnel counts by stage |
-| POST | `/api/investors/express-interest` | Lead capture |
+| **GET** | **`/api/properties/export`** | **CSV download of filtered deals (same query params as `/api/properties`)** — *branch only* |
+| POST | `/api/investors/express-interest` | Lead capture + env-gated Resend email alert |
 | POST | `/api/ingest` | HMAC-signed bulk upsert from scrapers |
 | POST | `/api/auth/login` / `/api/auth/logout` | Cookie gate |
 
@@ -116,6 +124,9 @@ GET /insights ┘                          └─→ cache miss: Anthropic SDK c
 | `DEMO_PASSWORD` | `.env.local`, Vercel | `distress2026` — gates protected routes |
 | `INGEST_SECRET` | `.env.local`, Vercel | HMAC secret for scrapers → /api/ingest |
 | **`ANTHROPIC_API_KEY`** | **`.env.local`, Vercel (prod) ✅ SET** | **Claude `haiku-4-5` for memo + insights. Falls back to heuristic if unset.** |
+| `RESEND_API_KEY` | ⏳ not set yet (branch adds the code) | Resend email on new Express Interest. Lead still saves if unset (email skipped). |
+| `LEAD_NOTIFY_EMAIL` | ⏳ not set yet | Recipient inbox for new-lead alerts. Required (with `RESEND_API_KEY`) for the email to fire. |
+| `RESEND_FROM` | optional | Verified sender; defaults to `DistressHub <onboarding@resend.dev>` (resend.dev delivers only to your own Resend account email). |
 | `CLERK_*` | `feat/clerk-auth` branch only | Awaiting Clerk signup — keys go in `.env.local` + Vercel env when ready |
 | `NEXT_PUBLIC_APP_NAME` | `.env.local`, Vercel | Display name |
 | `NEXT_PUBLIC_TARGET_LISTING_COUNT` | `.env.local`, Vercel | Hero stat target |
@@ -210,12 +221,14 @@ distresshub/
 ├── app/
 │   ├── api/                      # Route handlers
 │   │   ├── ingest/route.ts       # HMAC-signed bulk upsert
-│   │   ├── properties/[id]/
-│   │   │   ├── route.ts          # Single property
-│   │   │   ├── financial-model/  # Recompute with overrides
-│   │   │   ├── insights/         # NEW — JSON insights (shared cache)
-│   │   │   ├── memo/             # PDF memo (shared cache)
-│   │   │   └── stage/            # Pipeline mutations
+│   │   ├── properties/
+│   │   │   ├── export/route.ts   # NEW — CSV download of filtered deals
+│   │   │   └── [id]/
+│   │   │       ├── route.ts          # Single property
+│   │   │       ├── financial-model/  # Recompute with overrides
+│   │   │       ├── insights/         # JSON insights (shared cache)
+│   │   │       ├── memo/             # PDF memo (shared cache)
+│   │   │       └── stage/            # Pipeline mutations
 │   │   ├── stats/...             # Dashboard aggregates
 │   │   ├── investors/...         # Lead capture
 │   │   └── auth/...              # Cookie gate
@@ -245,7 +258,8 @@ distresshub/
 │   ├── scenarios.ts              # Bull/Base/Bear with assumption deltas
 │   ├── locality.ts               # Haversine to airport/CBD/IT-hub (17 cities)
 │   ├── diligence.ts              # Type-aware checklist (7 items)
-│   ├── insights.ts               # NEW — shared Claude call + 30-min cache
+│   ├── insights.ts               # shared Claude call + 30-min cache
+│   ├── notify.ts                 # NEW — env-gated Resend email on new lead
 │   ├── memo-pdf.tsx              # 3-page React-PDF document
 │   ├── constants.ts              # Cities, banks, types
 │   └── utils.ts                  # cn, formatINR, parseJsonField, etc.
@@ -326,10 +340,11 @@ parked on the `feat/clerk-auth` branch.
 - Adds the latest auction listings, refreshes dates on existing rows
 - Cleanup: `rm lib/store.ts prisma/schema.postgres.prisma` (obsolete duplicates)
 
-### 9.H CSV export from /deals (~30 min)
-- "Download CSV" button on `/deals` filter bar
-- Server route streams filtered listings as CSV
-- Practical operator UX win
+### 9.H CSV export from /deals — ✅ shipped to branch `claude/youthful-fermat-0xunz9`
+- "Download CSV" button on `/deals` filter bar (`components/FilterBar.tsx`)
+- Server route `app/api/properties/export/route.ts` streams filtered listings as CSV
+  (same query params as `/api/properties`, BOM + CRLF for Excel, 23 columns)
+- Pending merge to `main` → auto-deploy
 
 ### Auth-gated Phase 2 (when Clerk lands)
 
@@ -359,7 +374,7 @@ parked on the `feat/clerk-auth` branch.
 - **IIG ingestion** — production ingest deferred (would need a `StressedCompany` model — IIG lists corporate insolvencies, not property auctions). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
 - **IBAPI ingestion** — production ingest deferred (DOM-based scraper needs revalidation). The 2 test rows that were lingering in prod were cleaned out on 2026-06-23.
 - **Authenticated BAANKNET scrape** — unlocks rich detail fields (title, area, images). Requires partner sign-up.
-- **Express Interest notifications** — `/api/investors/express-interest` writes an `InvestorInterest` row but does not send an email, SMS, Slack ping, or any other notification. The first real lead **will** be missed unless someone manually checks the DB. Fix is ~30 min: wire Resend or a Slack webhook into the route handler.
+- **Express Interest notifications** — ✅ **code shipped** on branch `claude/youthful-fermat-0xunz9`. `/api/investors/express-interest` now calls `notifyNewInterest()` (`lib/notify.ts`), which sends a Resend email via REST (no SDK dep). It's env-gated and never-throwing: **until `RESEND_API_KEY` + `LEAD_NOTIFY_EMAIL` are set in Vercel env, the lead still saves but no email fires** (logged warning). Remaining work to fully close the gap: merge the branch, set the two env vars, and (for real delivery to an external inbox) verify a sender domain in Resend and set `RESEND_FROM`.
 - **`feat/clerk-auth` rebase** — that branch hasn't been touched since Phase 2.3 shipped, which means `proxy.ts`, `app/layout.tsx`, the Navbar, and `.env.local` keys have all drifted. The "~1 hr" estimate to resume Clerk likely needs +1–2 hrs of merge-conflict resolution.
 - **`lib/store.ts`** — obsolete in-memory backend, kept in git history. Safe to `rm` next session.
 - **`prisma/schema.postgres.prisma`** — duplicate of `schema.prisma` now that we're already on Postgres. Safe to delete.

@@ -1,7 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
-import { Filter, X } from "lucide-react";
+import { Filter, X, Download } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { TIER_1_BANKS, PROPERTY_TYPES } from "@/lib/constants";
@@ -47,17 +47,27 @@ export function FilterBar({ initial }: { initial: Filters }) {
     ([k, v]) => k !== "sort" && v
   ).length;
 
+  // Hand the current filter + sort state to the CSV export route verbatim.
+  const exportHref = `/api/properties/export?${sp.toString()}`;
+
   return (
     <div className="rounded-lg border border-divider bg-bg-card p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-dim">
           <Filter className="h-3.5 w-3.5" /> Filter & Sort
         </p>
-        {activeCount > 0 && (
-          <Button size="sm" variant="ghost" onClick={clearAll}>
-            <X className="h-3 w-3" /> Clear ({activeCount})
+        <div className="flex items-center gap-1">
+          <Button asChild size="sm" variant="ghost">
+            <a href={exportHref} download>
+              <Download className="h-3 w-3" /> Download CSV
+            </a>
           </Button>
-        )}
+          {activeCount > 0 && (
+            <Button size="sm" variant="ghost" onClick={clearAll}>
+              <X className="h-3 w-3" /> Clear ({activeCount})
+            </Button>
+          )}
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <Select

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { INVESTOR_TYPES } from "@/lib/constants";
+import { notifyNewInterest } from "@/lib/notify";
 
 const BodySchema = z.object({
   propertyId: z.string().min(1),
@@ -21,10 +22,10 @@ export async function POST(req: Request) {
   }
   const data = parsed.data;
 
-  // Confirm property exists
+  // Confirm property exists (title/city/state used in the lead notification)
   const property = await prisma.property.findUnique({
     where: { id: data.propertyId },
-    select: { id: true },
+    select: { id: true, title: true, city: true, state: true },
   });
   if (!property) {
     return NextResponse.json({ error: "Property not found" }, { status: 404 });
@@ -54,6 +55,24 @@ export async function POST(req: Request) {
       investorId: investor.id,
       message: data.message ?? null,
     },
+  });
+
+  // Fire the lead alert. Env-gated and never-throwing (see lib/notify.ts) —
+  // awaited so the serverless instance stays alive long enough to deliver,
+  // but a failure here can't affect the persisted lead or this response.
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("host");
+  await notifyNewInterest({
+    investor: {
+      name: data.name,
+      email: data.email,
+      phone: data.phone ?? null,
+      type: data.type,
+      ticketSize: data.ticketSize ?? null,
+    },
+    property,
+    message: data.message ?? null,
+    dealUrl: host ? `${proto}://${host}/deals/${property.id}` : null,
   });
 
   return NextResponse.json({ ok: true, interestId: interest.id });
