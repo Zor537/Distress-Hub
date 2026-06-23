@@ -1,6 +1,6 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23
+Last updated: 2026-06-23 (Phase 2.3 + data-depth session)
 Repo: https://github.com/Zor537/Distress-Hub
 Production: https://distresshub-zor1.vercel.app (public, no token)
 Aliased: https://distresshub.vercel.app
@@ -17,16 +17,17 @@ first at the start of any new session, then keep it updated.
 | **Frontend** | Next.js 16 App Router, Tailwind v4, deployed on Vercel |
 | **Database** | Supabase Postgres 17, Mumbai (`ap-south-1`), project ref `whyxeirfudunugmumtsk` |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg`, transaction-pooler URL for runtime |
-| **Auth** | Env-var password (`distress2026`) via `proxy.ts` cookie gate |
-| **Data** | 331 properties (50 hand-seeded + 276 real BAANKNET + smoke-test inserts) |
-| **Sources** | BAANKNET ✅ live, IIG ⊘ deferred, IBAPI 🔨 scaffolded |
+| **Auth** | Env-var password (`distress2026`) via `proxy.ts` cookie gate. Clerk wiring parked on `feat/clerk-auth` |
+| **Data** | **401 properties** (50 NCR seed + 276 BAANKNET scraped + **70 hand-curated Mumbai/BLR/HYD**) |
+| **Sources** | BAANKNET ✅ live (326), MANUAL ✅ (75), IIG ⊘ deferred, IBAPI 🔨 scaffolded |
+| **AI memo PDF** | ✅ Live at `/api/properties/[id]/memo` — Claude haiku-4-5 narrative + react-pdf renderer. Falls back to heuristic without `ANTHROPIC_API_KEY` |
 | **Deployment protection** | Disabled — production URL is public |
 
 ### Top-of-mind numbers (snapshot at handoff)
-- 331 total properties, 326 from BAANKNET
-- 15 distinct banks, 172 distinct cities, true pan-India
-- Avg DH Score: 51.4
-- 4 IngestRun rows visible at `/admin/ingest`
+- **401** total properties, true pan-India coverage (NCR + Mumbai + Bangalore + Hyderabad + 170+ other cities from BAANKNET)
+- **15** distinct banks (incl. Bank of Maharashtra, Indian Bank, Indian Overseas Bank, Central Bank of India added via BAANKNET)
+- **6** ingest runs visible at `/admin/ingest`
+- Memo PDF generation: ~1s server-side, valid PDF v1.3 with DH Score circle + signal bars + financial KPIs + 3-para narrative
 
 ---
 
@@ -54,7 +55,7 @@ first at the start of any new session, then keep it updated.
 | GET | `/api/stats/overview` | Top-line KPIs |
 | GET | `/api/stats/pipeline` | Funnel counts by stage |
 | POST | `/api/investors/express-interest` | Lead capture |
-| POST | `/api/scraper/trigger` | Mock re-scoring trigger (legacy) |
+| **GET** | **`/api/properties/[id]/memo`** | **PDF investor memo (Claude narrative + DH Score + financial model)** |
 | **POST** | **`/api/ingest`** | **HMAC-signed bulk upsert from scrapers** |
 | POST | `/api/auth/login` / `/api/auth/logout` | Cookie gate |
 
@@ -68,6 +69,8 @@ first at the start of any new session, then keep it updated.
 | `DIRECT_URL` | `.env.local`, Vercel (prod+preview) | Supabase session pooler (port 5432) for Prisma Migrate |
 | `DEMO_PASSWORD` | `.env.local`, Vercel | `distress2026` — gates protected routes |
 | `INGEST_SECRET` | `.env.local`, Vercel | HMAC secret for scrapers → /api/ingest |
+| `ANTHROPIC_API_KEY` | Vercel (optional) | Claude API for memo PDF narrative. Falls back to heuristic if missing. Get from console.anthropic.com |
+| `CLERK_*` | `feat/clerk-auth` branch only | Awaiting Clerk signup — keys go in `.env.local` + Vercel env when ready |
 | `NEXT_PUBLIC_APP_NAME` | `.env.local`, Vercel | Display name |
 | `NEXT_PUBLIC_TARGET_LISTING_COUNT` | `.env.local`, Vercel | Hero stat target |
 
@@ -214,43 +217,63 @@ distresshub/
 ## 8. Next-session to-do — start from the top
 
 The growth plan is documented in `~/.claude/plans/i-want-to-begin-keen-spark.md`.
-Current phase is moving from Phase 1 (✅ complete) into **Phase 2**.
+Phase 1 ✅ complete. Phase 2.3 (AI memo PDF) + pan-India data depth ✅
+shipped this session. **Auth-dependent Phase 2 work is parked on the
+`feat/clerk-auth` branch.**
 
-### Phase 2 — Investor actions + monetisation (recommended next, ~2 weeks)
+### Phase 2 status
 
-Pick one to begin. Each is independently shippable.
+| | |
+|---|---|
+| 2.1 Real auth via Clerk | ⏸ **Parked on `feat/clerk-auth`** — full scaffold (ClerkProvider, middleware, sign-in/sign-up pages, User model, Svix webhook) committed. Resume by getting Clerk publishable + secret keys, setting in Vercel env, rebasing onto main. |
+| 2.2 Watchlists | ⏳ Blocked on 2.1 (needs `User` table) |
+| **2.3 AI memo PDF** | ✅ **Shipped** — heuristic narrative live, upgrade to Claude by adding `ANTHROPIC_API_KEY` to Vercel env |
+| 2.4 Pricing + Stripe | ⏳ Blocked on 2.1 (needs subscription model gated by auth) |
 
-#### 8.1 Real auth via Clerk (~2-3 hours)
-- Sign up at https://clerk.com
-- `npm i @clerk/nextjs`
-- Replace `proxy.ts` env-password with `clerkMiddleware`
-- Add `User` model in Prisma keyed on Clerk user ID
-- Sign-up via Indian phone OTP works out of the box
-- **Verify**: sign up → redirected to /dashboard, /pipeline accessible
+### Recommended next-session options (no auth needed)
 
-#### 8.2 Watchlists (~3-4 hours)
+#### 8.A Upgrade memo narratives from heuristic to Claude (~10 min)
+- Get key from https://console.anthropic.com/settings/keys
+- `npx vercel env add ANTHROPIC_API_KEY production`
+- Redeploy
+- Verify a memo PDF gets a tailored 3-paragraph narrative from Claude
+
+#### 8.B Comparable deals carousel on `/deals/[id]` (~2 hours)
+- "5 similar deals in this micro-market" card grid
+- Filter by `city + propertyType + reservePrice ±20%`
+- Reuse `DealCard` component
+- High-value page polish — improves the page investors land on most
+
+#### 8.C Resume Clerk auth (~1 hour once you have keys)
+- `git checkout feat/clerk-auth`
+- Drop keys into `.env.local` + Vercel env
+- Verify locally → merge to main → deploy
+- Unblocks Phase 2.2 (Watchlists) and 2.4 (Stripe)
+
+#### 8.D Refresh BAANKNET data + cleanup (~30 min)
+- Re-run `python scraper/baanknet.py` from your laptop (~3 min)
+- Adds the latest auction listings, refreshes dates on existing rows
+- Cleanup: `rm lib/store.ts prisma/schema.postgres.prisma` (obsolete duplicates)
+
+#### 8.E CSV export from /deals (~30 min)
+- Add "Download CSV" button on `/deals` filter bar
+- Server route streams filtered listings as CSV
+- Practical operator UX win
+
+### Auth-gated Phase 2 (when Clerk lands)
+
+#### Phase 2.2 — Watchlists (~3-4 hrs)
 - New Prisma model `Watchlist { id, userId, propertyId, createdAt }`
-- `<WatchlistButton>` component (heart icon, optimistic toggle)
-- Drop into `DealCard` and `/deals/[id]` sidebar
+- `<WatchlistButton>` component, optimistic toggle
+- Drop into `DealCard` + `/deals/[id]` sidebar
 - New page `/watchlist` reusing `DealCard` grid
-- Needs Clerk first (depends on User)
-- **Verify**: heart a deal → see it at /watchlist. Sign out → empty.
 
-#### 8.3 AI diligence memo PDF (~4-6 hours, the highest-WOW)
-- `npm i @react-pdf/renderer @anthropic-ai/sdk`
-- New route `app/api/properties/[id]/memo/route.ts`
-- Calls Claude API with DH Score signals + financial model
-- Server-renders to PDF
-- "Generate Memo" button on `/deals/[id]`
-- **Verify**: click → PDF downloads with Claude-written narrative
-
-#### 8.4 Pricing + Stripe (~6-8 hours)
+#### Phase 2.4 — Pricing + Stripe (~6-8 hrs)
 - Stripe products: Investor ₹4,999/mo, Family Office ₹24,999/mo
 - New webhook route `app/api/billing/webhook/route.ts`
 - New `/pricing` page
 - Add `Subscription` Prisma model
-- Gating middleware: watchlist size, memo generation
-- Needs Clerk first
+- Gating middleware: watchlist size, memo generation rate-limit
 - **Verify**: test card upgrades, watchlist limit lifts
 
 ### Other low-effort wins (anytime)
