@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { prisma, publicPropertySelect } from "@/lib/db";
 
 const QuerySchema = z.object({
   city: z.string().optional(),
@@ -47,6 +47,7 @@ export async function GET(req: NextRequest) {
     where,
     orderBy,
     take: q.limit,
+    select: publicPropertySelect,
   });
 
   return NextResponse.json({

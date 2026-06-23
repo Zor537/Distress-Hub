@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeDHScore } from "@/lib/scoring";
+import { isOperatorRequest } from "@/lib/auth-token";
 
 /**
  * Mock BAANKNET ingest trigger.
@@ -11,11 +12,11 @@ import { computeDHScore } from "@/lib/scoring";
  * scraper would POST normalised listings here in v1.
  */
 export async function POST(req: Request) {
-  if (process.env.DEMO_PASSWORD) {
-    const auth = req.headers.get("x-dh-auth");
-    if (auth && auth !== process.env.DEMO_PASSWORD) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  // Operator-only: re-scores every row (a heavy bulk write), so it must not be
+  // reachable unauthenticated. Fails closed via the shared cookie check —
+  // the previous header check passed when the header was simply omitted.
+  if (!(await isOperatorRequest(req))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const props = await prisma.property.findMany();

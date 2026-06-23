@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { PIPELINE_STAGES } from "@/lib/constants";
+import { isOperatorRequest } from "@/lib/auth-token";
 
 const BodySchema = z.object({
   stage: z.enum(PIPELINE_STAGES).optional(),
@@ -9,6 +10,10 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Operator-only mutation — proxy.ts only gates page paths, not /api/*.
+  if (!(await isOperatorRequest(req))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const { id } = await params;
   const body = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(body);

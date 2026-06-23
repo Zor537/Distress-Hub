@@ -49,7 +49,6 @@ const HEADERS = [
   "Possession",
   "Auction Date",
   "Auction Status",
-  "Pipeline Stage",
   "Source URL",
   "DistressHub URL",
   "External ID",
@@ -116,7 +115,6 @@ export async function GET(req: NextRequest) {
       possessionType: true,
       auctionDate: true,
       auctionStatus: true,
-      pipelineStage: true,
       sourceUrl: true,
     },
   });
@@ -148,7 +146,6 @@ export async function GET(req: NextRequest) {
         r.possessionType,
         r.auctionDate ? r.auctionDate.toISOString().slice(0, 10) : "",
         r.auctionStatus,
-        r.pipelineStage,
         r.sourceUrl,
         origin ? `${origin}/deals/${r.id}` : r.id,
         r.externalId,
