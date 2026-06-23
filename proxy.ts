@@ -1,22 +1,24 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-export function proxy(req: NextRequest) {
-  const isProtected =
-    req.nextUrl.pathname.startsWith("/dashboard") ||
-    req.nextUrl.pathname.startsWith("/pipeline") ||
-    req.nextUrl.pathname.startsWith("/admin");
-  if (!isProtected) return NextResponse.next();
+// Routes that require an authenticated Clerk user.
+// /api/ingest stays open to HMAC-signed scraper calls — not gated here.
+const isProtectedRoute = createRouteMatcher([
+  "/dashboard(.*)",
+  "/pipeline(.*)",
+  "/admin(.*)",
+]);
 
-  const auth = req.cookies.get("dh-auth")?.value;
-  const expected = process.env.DEMO_PASSWORD ?? "distress2026";
-  if (auth === expected) return NextResponse.next();
-
-  const url = new URL("/login", req.url);
-  url.searchParams.set("next", req.nextUrl.pathname);
-  return NextResponse.redirect(url);
-}
+export default clerkMiddleware(async (auth, req) => {
+  if (isProtectedRoute(req)) {
+    await auth.protect();
+  }
+});
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/pipeline/:path*", "/admin/:path*"],
+  // Skip Next.js internals and all static files, unless found in search params
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    // Always run for API routes (so auth is available in them when needed)
+    "/(api|trpc)(.*)",
+  ],
 };
