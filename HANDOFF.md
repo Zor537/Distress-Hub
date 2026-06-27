@@ -1,10 +1,10 @@
 # DistressHub — Session Handoff
 
-Last updated: 2026-06-23 (CSV export + Express Interest email + security hardening — **merged to `main` via PR #1**). ⚠️ Prod URL is 403 to automated checks — needs a human browser check (action item 1 below).
+Last updated: 2026-06-27 (login fix — restored demo-password fallback, **merged to `main` via [PR #3](https://github.com/Zor537/Distress-Hub/pull/3)**; prod verified, action item 1 resolved). Prior: 2026-06-23 (CSV export + Express Interest email + security hardening, PR #1).
 Repo: https://github.com/Zor537/Distress-Hub
-Production: https://distresshub-zor1.vercel.app — ⚠️ **currently returns 403 to automated/cloud IPs** (see action item 1)
+Production: https://distresshub-zor1.vercel.app — ✅ **public and live** (verified 2026-06-27 server-side: `/login` → 200, no Deployment Protection)
 Aliased: https://distresshub.vercel.app
-Latest commit on main: `3e7a3de` (Merge PR #1). Prior prod baseline: `b7d0a30`.
+Latest commit on main: `ae873ec` (Merge PR #3 — login fix). Prior: `b13a8a7` (PR #2 docs), `3e7a3de` (PR #1).
 
 > **✅ Shipped this session — merged to `main` via [PR #1](https://github.com/Zor537/Distress-Hub/pull/1) (`3e7a3de`):**
 > (C) CSV export from `/deals`, (D) env-gated Resend email on Express Interest, and a
@@ -12,18 +12,17 @@ Latest commit on main: `3e7a3de` (Merge PR #1). Prior prod baseline: `b7d0a30`.
 > exact code built green on Vercel pre-merge.
 >
 > **⏳ Action items for next session (verify/finish — none are code blockers):**
-> 1. **Prod URL returns `403`** on `/`, `/deals`, and the CSV route — from *two* independent
->    egress paths (sandbox curl + Anthropic fetcher), so it's the site, not the tooling. The
->    root isn't auth-gated, so this is **not our code** — almost certainly Vercel **Deployment
->    Protection** (Trusted-IPs/allowlist or auth) on the production deployment, which contradicts
->    the "public" note above. **Open https://distresshub-zor1.vercel.app/ in a browser:** if it
->    loads, it's just IP-blocking of automation (harmless); if you also hit 403/a wall, adjust
->    Vercel → distresshub → Settings → Deployment Protection. Then confirm the latest Production
->    deploy shows "Ready".
+> 1. ✅ **RESOLVED (2026-06-27) — the prod 403 was NOT a Vercel issue.** The production site is
+>    public and returns `200` (verified server-side via Vercel MCP: `/login` → 200 with the real
+>    app HTML; `/dashboard` → redirects to `/login`; project has no `passwordProtection` /
+>    `ssoProtection`). The `403` seen from sandbox curl was the **agent's egress policy** denying
+>    CONNECT to the host (`connect_rejected: policy denial` for `distresshub-zor1.vercel.app:443`),
+>    which looks identical to a site 403 but is a sandbox-only network restriction — a normal
+>    browser loads the site fine. **No action needed; nothing to change on Vercel.**
 > 2. **Set `RESEND_API_KEY` + `LEAD_NOTIFY_EMAIL`** (+ optional `RESEND_FROM` with a verified
 >    sender domain) in Vercel env — until then Express Interest leads save but **no email fires**.
-> 3. Couldn't read live deploy state via Vercel MCP this session (`get_deployment` /
->    `list_deployments` threw transport "overflow" errors; `list_projects` worked). Retry if needed.
+> 3. ✅ Vercel MCP worked this session (`list_deployments`, `get_project`, `web_fetch_vercel_url`
+>    all succeeded) — only occasional transient "permission stream closed" reconnects; just retry.
 >
 > **Deploy note:** the auth cookie scheme changed (opaque SHA-256 token, not the raw password) —
 > anyone logged into prod gets logged out once and re-logs in with the (still visible) demo
@@ -48,7 +47,7 @@ first at the start of any new session, then keep it updated.
 | **AI memo PDF** | ✅ **Live, 3 pages, full Claude narrative + counter-thesis + change-my-mind** at `/api/properties/[id]/memo`. Falls back to heuristic without `ANTHROPIC_API_KEY` |
 | **AI insights JSON** | ✅ **Live** at `/api/properties/[id]/insights` — same Claude payload as PDF, shared 30-min cache |
 | **Deal page enrichments** | ✅ **`DealInsights`** component + **`ShareMemoButton`** + memo download — narrative, counter-thesis, change-my-mind in-page |
-| **Deployment protection** | Disabled — production URL is public |
+| **Deployment protection** | Disabled — production URL is public (✅ confirmed 2026-06-27: `/login` → 200, no SSO/password wall) |
 
 ### Top-of-mind numbers (live, 2026-06-23, post-cleanup)
 - **397** total properties · **176** cities · **22** states · pan-India
