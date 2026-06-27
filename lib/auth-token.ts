@@ -11,11 +11,25 @@
  * available in both the Edge runtime (proxy.ts) and Node route handlers, so the
  * exact same token is produced on both sides.
  *
- * Fail-closed: when DEMO_PASSWORD is unset there is no valid token, so no
- * request is authorized (rather than silently falling back to a known default).
+ * Open demo: DEMO_PASSWORD is optional. When unset it falls back to the
+ * published demo password (DEMO_PASSWORD_DEFAULT) — printed on /login and in the
+ * README — so the gate works in every environment without extra config. Set
+ * DEMO_PASSWORD to override it for a non-public deployment.
  */
 
 export const AUTH_COOKIE = "dh-auth";
+
+/**
+ * Published demo password. Intentionally public (shown on /login + README); the
+ * gate exists to deter drive-by bots, not determined users. Override per
+ * deployment with the DEMO_PASSWORD env var.
+ */
+export const DEMO_PASSWORD_DEFAULT = "distress2026";
+
+/** Active gate password: the DEMO_PASSWORD env override, else the demo default. */
+export function gatePassword(): string {
+  return process.env.DEMO_PASSWORD ?? DEMO_PASSWORD_DEFAULT;
+}
 
 /** Derive the opaque session token for a given password. */
 export async function authTokenFor(password: string): Promise<string> {
@@ -47,15 +61,15 @@ function readCookie(req: Request, name: string): string | undefined {
 }
 
 /**
- * True iff the request carries a valid operator auth cookie. Fails CLOSED:
- * if DEMO_PASSWORD is unset, or the cookie is missing/wrong, returns false.
+ * True iff the request carries a valid operator auth cookie — a cookie whose
+ * token matches the active gate password (env override or demo default).
+ * Returns false when the cookie is missing or wrong.
  *
  * Use to gate operator-only mutation routes (they are NOT covered by proxy.ts,
  * which only matches page paths).
  */
 export async function isOperatorRequest(req: Request): Promise<boolean> {
-  const password = process.env.DEMO_PASSWORD;
-  if (!password) return false;
+  const password = gatePassword();
   const cookie = readCookie(req, AUTH_COOKIE);
   if (!cookie) return false;
   try {
