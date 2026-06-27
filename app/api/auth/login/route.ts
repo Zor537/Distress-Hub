@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { AUTH_COOKIE, authTokenFor } from "@/lib/auth-token";
+import { AUTH_COOKIE, authTokenFor, gatePassword } from "@/lib/auth-token";
 
 const BodySchema = z.object({ password: z.string().min(1) });
 
@@ -10,11 +10,8 @@ export async function POST(req: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
-  // Fail closed: no fallback to a hardcoded default password.
-  const expected = process.env.DEMO_PASSWORD;
-  if (!expected) {
-    return NextResponse.json({ error: "Auth not configured" }, { status: 503 });
-  }
+  // Open demo: defaults to the published demo password when DEMO_PASSWORD is unset.
+  const expected = gatePassword();
   if (parsed.data.password !== expected) {
     return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
   }

@@ -27,8 +27,8 @@ Latest commit on main: `3e7a3de` (Merge PR #1). Prior prod baseline: `b7d0a30`.
 >
 > **Deploy note:** the auth cookie scheme changed (opaque SHA-256 token, not the raw password) —
 > anyone logged into prod gets logged out once and re-logs in with the (still visible) demo
-> password. `DEMO_PASSWORD` is now **required** (fails closed if unset); it's set in Vercel, so
-> login keeps working.
+> password. `DEMO_PASSWORD` is **optional** — `gatePassword()` falls back to the published demo
+> password (`distress2026`) when unset, so login works in every environment without extra config.
 
 This file is the canonical "where did we leave off" for the project. Read it
 first at the start of any new session, then keep it updated.
@@ -42,7 +42,7 @@ first at the start of any new session, then keep it updated.
 | **Frontend** | Next.js 16 App Router + Turbopack, Tailwind v4, deployed on Vercel |
 | **Database** | Supabase Postgres 17, Mumbai (`ap-south-1`), project ref `whyxeirfudunugmumtsk` |
 | **ORM** | Prisma 7 + `@prisma/adapter-pg`, transaction-pooler URL for runtime |
-| **Auth** | Required env password `DEMO_PASSWORD` (`distress2026`, public demo). `proxy.ts` gates pages; operator mutation APIs gate via `lib/auth-token.ts`. Cookie holds a SHA-256 token, not the password. Fails closed. Clerk parked on `feat/clerk-auth` |
+| **Auth** | Optional env password `DEMO_PASSWORD` (defaults to `distress2026`, public demo, via `gatePassword()`). `proxy.ts` gates pages; operator mutation APIs gate via `lib/auth-token.ts`. Cookie holds a SHA-256 token, not the password. Clerk parked on `feat/clerk-auth` |
 | **Data** | **397 properties** across 176 cities, 22 states; 11 MB DB (~2% of 500 MB free tier) |
 | **Sources** | BAANKNET (326), MANUAL (71). Last ingest: 2026-06-23 06:20 IST (MANUAL). |
 | **AI memo PDF** | ✅ **Live, 3 pages, full Claude narrative + counter-thesis + change-my-mind** at `/api/properties/[id]/memo`. Falls back to heuristic without `ANTHROPIC_API_KEY` |
@@ -447,8 +447,11 @@ timing-safe and fails closed.
   re-score) were open. Both now gate via `lib/auth-token.isOperatorRequest()` and fail closed.
 - **Cookie hardened.** `lib/auth-token.ts` — session cookie now holds a SHA-256 token of
   `DEMO_PASSWORD`, not the password itself; added `secure` (prod), kept `httpOnly`+`sameSite=lax`.
-- **Fail-closed auth.** Removed the hardcoded `?? "distress2026"` fallback in `proxy.ts` +
-  login route. `DEMO_PASSWORD` is now required; unset = gate shut, no login succeeds.
+- **Fail-closed auth — reverted 2026-06-27.** The fail-closed change (require `DEMO_PASSWORD`,
+  no fallback) broke login with `503 "Auth not configured"` wherever the env var wasn't set.
+  Restored via `gatePassword()` in `lib/auth-token.ts`: `DEMO_PASSWORD ?? "distress2026"`, used by
+  `proxy.ts`, the login route, and `isOperatorRequest()`. Cookie hardening (SHA-256 token,
+  `secure`) and the closed write routes / data restrictions from this commit are retained.
 - **Internal fields no longer public.** `publicPropertySelect` in `lib/db.ts` drops `notes`
   + `pipelineStage` from `GET /api/properties`, `GET /api/properties/[id]`, and the CSV export.
 - **Security headers** added in `next.config.ts` (nosniff, X-Frame-Options DENY,

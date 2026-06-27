@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { AUTH_COOKIE, authTokenFor } from "@/lib/auth-token";
+import { AUTH_COOKIE, authTokenFor, gatePassword } from "@/lib/auth-token";
 
 export async function proxy(req: NextRequest) {
   const isProtected =
@@ -9,11 +9,11 @@ export async function proxy(req: NextRequest) {
     req.nextUrl.pathname.startsWith("/admin");
   if (!isProtected) return NextResponse.next();
 
-  // Fail closed: an unset DEMO_PASSWORD means no valid token exists, so the
-  // gate stays shut rather than falling back to a known default password.
-  const password = process.env.DEMO_PASSWORD;
+  // Open demo: DEMO_PASSWORD falls back to the published demo password
+  // (gatePassword), so the gate works without extra env config.
+  const password = gatePassword();
   const cookie = req.cookies.get(AUTH_COOKIE)?.value;
-  if (password && cookie) {
+  if (cookie) {
     try {
       if (cookie === (await authTokenFor(password))) return NextResponse.next();
     } catch {
